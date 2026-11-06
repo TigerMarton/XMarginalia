@@ -19,6 +19,7 @@
 #include <esp_wifi.h>
 
 #include "DevMode.h"
+#include "activities/network/NearbyBookTransferActivity.h"
 #else
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -94,6 +95,14 @@ uint16_t portForAddress(const Address& address) {
 
 Radio::~Radio() { end(); }
 
+bool Radio::isActive() {
+#if defined(ARDUINO_ARCH_ESP32) && !defined(SIMULATOR)
+  return activeRadio != nullptr && activeRadio->started_;
+#else
+  return false;
+#endif
+}
+
 // ---------------------------------------------------------------------------
 // Shared: the receive ring.
 // ---------------------------------------------------------------------------
@@ -125,6 +134,10 @@ void Radio::enqueueFromCallback(const uint8_t* sourceMac, const uint8_t* data, c
 
 bool Radio::begin() {
   end();
+  if (NearbyBookTransferActivity::isRadioActive()) {
+    LOG_ERR("LINK", "radio busy with nearby file transfer");
+    return false;
+  }
 
   // Developer Mode holds an association to the house AP, and an association
   // pins the radio to that AP's channel. ESP-NOW here is fixed to kChannel, so

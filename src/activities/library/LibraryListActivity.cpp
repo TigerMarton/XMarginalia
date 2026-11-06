@@ -12,11 +12,13 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "activities/network/NearbyBookTransferActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UIScale.h"
@@ -280,37 +282,61 @@ void LibraryListActivity::showRecentBookOptions(const int entry) {
     }
   }
 
-  const char* STORE_OPTIONS[] = {tr(STR_OPEN), tr(STR_REMOVE_FROM_RECENTS), tr(STR_DELETE), tr(STR_LIBRARY_REBUILD)};
-  const char* INDEX_OPTIONS[] = {tr(STR_OPEN), tr(STR_DELETE), tr(STR_LIBRARY_REBUILD)};
+  enum class RowAction : uint8_t { Open, SendNearby, RemoveRecent, Delete, Rebuild };
+  const char* labels[5]{};
+  std::array<RowAction, 5> actions{};
+  int optionCount = 0;
+  auto addOption = [&](const char* label, const RowAction action) {
+    labels[optionCount] = label;
+    actions[optionCount] = action;
+    ++optionCount;
+  };
+  addOption(tr(STR_OPEN), RowAction::Open);
+  if (NearbyBookTransferActivity::supportedFile(path)) addOption(tr(STR_SEND_NEARBY_BOOK), RowAction::SendNearby);
+  if (isStoreRow) addOption(tr(STR_REMOVE_FROM_RECENTS), RowAction::RemoveRecent);
+  addOption(tr(STR_DELETE), RowAction::Delete);
+  addOption(tr(STR_LIBRARY_REBUILD), RowAction::Rebuild);
+
   app.clearTapFlash();
-  optionPopup.show(tr(STR_LIBRARY), title.c_str(), isStoreRow ? STORE_OPTIONS : INDEX_OPTIONS, isStoreRow ? 4 : 3, 0,
-                   [this, path, title, isStoreRow](const int choice) {
+  optionPopup.show(tr(STR_LIBRARY), title.c_str(), labels, optionCount, 0,
+                   [this, path, title, actions, optionCount](const int choice) {
                      swallowHeldReleases();
-                     switch (choice) {
-                       case 0:
+                     if (choice < 0 || choice >= optionCount) return;
+                     switch (actions[choice]) {
+                       case RowAction::Open:
                          openBookByPath(path);
                          break;
-                       case 1:
-                         if (isStoreRow) {
-                           promptRemoveRecentBook(path, title);
-                         } else {
-                           promptDeleteBookByPath(path, title);
-                         }
+                       case RowAction::SendNearby:
+                         sendBookNearby(path);
                          break;
-                       case 2:
-                         if (isStoreRow)
-                           promptDeleteBookByPath(path, title);
-                         else
-                           promptRebuildIndex();
+                       case RowAction::RemoveRecent:
+                         promptRemoveRecentBook(path, title);
                          break;
-                       case 3:
-                         if (isStoreRow) promptRebuildIndex();
+                       case RowAction::Delete:
+                         promptDeleteBookByPath(path, title);
                          break;
-                       default:
+                       case RowAction::Rebuild:
+                         promptRebuildIndex();
                          break;
                      }
                    });
   requestUpdate();
+}
+
+void LibraryListActivity::sendBookNearby(const std::string& path) {
+  const bool reopenIndex = index.isOpen();
+  index.close();
+  auto sender = makeUniqueNoThrow<NearbyBookTransferActivity>(renderer, mappedInput,
+                                                              NearbyBookTransferActivity::Mode::Send, path);
+  if (!sender) {
+    LOG_ERR("LIB", "OOM: nearby sender");
+    if (reopenIndex && !index.open(library::libraryIndexPath())) LOG_ERR("LIB", "cannot reopen library index");
+    return;
+  }
+  startActivityForResult(std::move(sender), [this, reopenIndex](const ActivityResult&) {
+    swallowHeldReleases();
+    if (reopenIndex && !index.open(library::libraryIndexPath())) LOG_ERR("LIB", "cannot reopen library index");
+  });
 }
 
 #if FREEINK_CAP_TOUCH

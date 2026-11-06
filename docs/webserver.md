@@ -28,6 +28,7 @@ networks or in hotspot mode when you control who is connected.
 | **Join Network** | You want the reader to join an existing Wi-Fi network. |
 | **Calibre Wireless** | You want to receive books from the CrossPoint Calibre plugin workflow. |
 | **Create Hotspot** | You want the reader to create its own open Wi-Fi network. |
+| **Receive File** | You want to receive a book or file directly from another nearby reader over ESP-NOW without connecting to Wi-Fi. |
 
 ## Join Network Mode
 

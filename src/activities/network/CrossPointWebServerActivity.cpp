@@ -179,6 +179,8 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
     modeName = "Connect to Calibre";
   } else if (mode == NetworkMode::CREATE_HOTSPOT) {
     modeName = "Create Hotspot";
+  } else if (mode == NetworkMode::RECEIVE_NEARBY_BOOK) {
+    modeName = "Receive Nearby File";
 #if FREEINK_CAP_USB_MSC
   } else if (mode == NetworkMode::USB_DRIVE) {
     modeName = "USB Drive";
@@ -192,6 +194,11 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
     return;
   }
 #endif
+
+  if (mode == NetworkMode::RECEIVE_NEARBY_BOOK) {
+    activityManager.goToNearbyBookReceive();
+    return;
+  }
 
   networkMode = mode;
   isApMode = (mode == NetworkMode::CREATE_HOTSPOT);

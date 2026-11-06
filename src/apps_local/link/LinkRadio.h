@@ -50,6 +50,7 @@ class Radio final : public Transport {
   bool begin();
   void end();
   bool started() const { return started_; }
+  static bool isActive();
 
   // True if a packet was dropped because the receive queue was full. Only a
   // diagnostic: the session retransmits, so a drop costs latency, not state.

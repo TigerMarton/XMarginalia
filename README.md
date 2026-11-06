@@ -102,6 +102,8 @@ Yahtzee, Knucklebones, Battleship, Jaipur, Sea Salt, Toy Battle, Go and Hex. Put
 two devices next to each other and they find one another. No pairing screen, no
 room code, no account, no router, no internet.
 
+Readers can also exchange books and artwork directly: select **Send to Nearby Device** from the book options menu in the Library or File Browser, and choose **Receive File** under File Transfer on the other reader. Compatible across Onyx BOOX Picco, Xteink X4 Pro, and CrossInk devices.
+
 ### Why it is shaped like this
 
 The decisions are written down rather than remembered. Each of these is the

@@ -16,6 +16,7 @@ class FileBrowserActivity final : public UiListActivity {
   // File actions
   bool removeDirFile(const std::string& fullPath);
   void showEntryActions();
+  void sendSelectedNearby();
   void startRename();
   void renameSelectedFile(const std::string& oldPath, const std::string& oldEntry, const std::string& newStem,
                           const std::string& extension);

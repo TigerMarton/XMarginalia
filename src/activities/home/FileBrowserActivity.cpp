@@ -15,6 +15,7 @@
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "activities/network/NearbyBookTransferActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
@@ -381,20 +382,46 @@ void FileBrowserActivity::showEntryActions() {
     return;
   }
 
-  const bool isDirectory = files[nav.selected].back() == '/';
+  const std::string& entry = files[nav.selected];
+  const bool isDirectory = entry.back() == '/';
+  const bool canSendNearby = !isDirectory && NearbyBookTransferActivity::supportedFile(entry);
+  static constexpr StrId SENDABLE_FILE_OPTIONS[] = {StrId::STR_OPEN, StrId::STR_SEND_NEARBY_BOOK, StrId::STR_DELETE,
+                                                    StrId::STR_RENAME};
   static constexpr StrId FILE_OPTIONS[] = {StrId::STR_OPEN, StrId::STR_DELETE, StrId::STR_RENAME};
   static constexpr StrId DIRECTORY_OPTIONS[] = {StrId::STR_OPEN, StrId::STR_DELETE};
-  optionPopup.show(StrId::STR_FILENAME, isDirectory ? DIRECTORY_OPTIONS : FILE_OPTIONS, isDirectory ? 2 : 3, 0,
-                   [this](const int index) {
-                     if (index == 0) {
-                       activateSelected();
-                     } else if (index == 1) {
-                       deleteSelected();
-                     } else if (index == 2) {
-                       startRename();
-                     }
-                   });
+  const StrId* options = isDirectory ? DIRECTORY_OPTIONS : (canSendNearby ? SENDABLE_FILE_OPTIONS : FILE_OPTIONS);
+  const int count = isDirectory ? 2 : (canSendNearby ? 4 : 3);
+  optionPopup.show(StrId::STR_FILENAME, options, count, 0, [this, canSendNearby](const int index) {
+    if (index == 0) {
+      activateSelected();
+    } else if (canSendNearby && index == 1) {
+      sendSelectedNearby();
+    } else if (index == (canSendNearby ? 2 : 1)) {
+      deleteSelected();
+    } else if (index == (canSendNearby ? 3 : 2)) {
+      startRename();
+    }
+  });
   requestUpdate();
+}
+
+void FileBrowserActivity::sendSelectedNearby() {
+  if (files.empty() || nav.selected < 0 || nav.selected >= listCount()) return;
+
+  const std::string& entry = files[nav.selected];
+  if (entry.back() == '/') return;
+
+  std::string cleanBasePath = basepath;
+  if (cleanBasePath.back() != '/') cleanBasePath += "/";
+  std::string fullPath = cleanBasePath + entry;
+
+  auto sender = makeUniqueNoThrow<NearbyBookTransferActivity>(
+      renderer, mappedInput, NearbyBookTransferActivity::Mode::Send, std::move(fullPath));
+  if (!sender) {
+    LOG_ERR("FileBrowser", "OOM: nearby sender");
+    return;
+  }
+  startActivityForResult(std::move(sender), [this](const ActivityResult&) { requestUpdate(true); });
 }
 
 void FileBrowserActivity::deleteSelected() {

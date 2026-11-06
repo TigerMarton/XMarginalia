@@ -25,6 +25,7 @@
 #include "home/HomeActivity.h"
 #include "library/LibraryListActivity.h"
 #include "network/CrossPointWebServerActivity.h"
+#include "network/NearbyBookTransferActivity.h"
 #include "network/UsbDriveActivity.h"
 #include "plugins/PluginCatalogActivity.h"
 #include "reader/ReaderActivity.h"
@@ -412,6 +413,16 @@ void ActivityManager::goToUsbDrive() {
 #else
   LOG_ERR("ACT", "USB Drive requested in a build without USB Drive capability");
 #endif
+}
+
+void ActivityManager::goToNearbyBookReceive() {
+  auto activity =
+      makeUniqueNoThrow<NearbyBookTransferActivity>(renderer, mappedInput, NearbyBookTransferActivity::Mode::Receive);
+  if (!activity) {
+    LOG_ERR("ACT", "OOM: nearby file receiver");
+    return;
+  }
+  replaceActivity(std::move(activity));
 }
 
 void ActivityManager::goToSettings(const SettingsSection openSection) {
