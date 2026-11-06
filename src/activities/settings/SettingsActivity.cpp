@@ -105,6 +105,78 @@ void SettingsActivity::rebuildSettings() {
 
   auto all = getSettingsList(&sdFontSystem.registry(), &dictionaries);
 
+  if (section == SettingsSection::Controls) {
+    settings.clear();
+    if (activeSubmenu == SettingAction::None) {
+      settings.push_back(SettingInfo::Submenu(StrId::STR_POWER_BUTTON, SettingAction::ControlsPowerButton));
+      settings.push_back(SettingInfo::Submenu(StrId::STR_SIDE_BUTTONS, SettingAction::ControlsSideButtons));
+      if (BoardConfig::hasTouch()) {
+        settings.push_back(SettingInfo::Submenu(StrId::STR_TOUCH_AND_GESTURES, SettingAction::ControlsGestures));
+      }
+      if (gpio.hasFrontButtons()) {
+        settings.push_back(SettingInfo::Submenu(StrId::STR_FRONT_BUTTONS, SettingAction::ControlsFrontButtons));
+      }
+      if (BoardConfig::hasHomeKey()) {
+        settings.push_back(SettingInfo::Action(StrId::STR_HOME_BUTTON, SettingAction::HomeButton));
+      }
+      for (auto& setting : all) {
+        if (sectionFor(setting) != section || !showOnDevice(setting)) continue;
+        if (setting.valuePtr == &CrossPointSettings::slideSwitchAction
+#if FREEINK_CAP_HAPTIC
+            || setting.valuePtr == &CrossPointSettings::vibration ||
+            setting.valuePtr == &CrossPointSettings::hapticIntensity
+#endif
+        ) {
+          settings.push_back(std::move(setting));
+        }
+      }
+    } else if (activeSubmenu == SettingAction::ControlsPowerButton) {
+      for (auto& setting : all) {
+        if (sectionFor(setting) != section || !showOnDevice(setting)) continue;
+        if (setting.nameId == StrId::STR_SHORT_PWR_BTN || setting.valuePtr == &CrossPointSettings::pwrBtnFootnoteBack ||
+            setting.valuePtr == &CrossPointSettings::doubleClickPwrLight) {
+          settings.push_back(std::move(setting));
+        }
+      }
+    } else if (activeSubmenu == SettingAction::ControlsSideButtons) {
+      for (auto& setting : all) {
+        if (sectionFor(setting) != section || !showOnDevice(setting)) continue;
+        if (setting.valuePtr == &CrossPointSettings::sideButtonLayout ||
+            setting.valuePtr == &CrossPointSettings::sideButtonLongPress ||
+            setting.valuePtr == &CrossPointSettings::sideButtonComboAction ||
+            setting.valuePtr == &CrossPointSettings::tiltPageTurn) {
+          settings.push_back(std::move(setting));
+        }
+      }
+    } else if (activeSubmenu == SettingAction::ControlsGestures) {
+      for (auto& setting : all) {
+        if (sectionFor(setting) != section || !showOnDevice(setting)) continue;
+        if (setting.valuePtr == &CrossPointSettings::touchReaderControls ||
+            setting.valuePtr == &CrossPointSettings::pageTurnGesture ||
+            setting.valuePtr == &CrossPointSettings::previousPageGesture ||
+            setting.valuePtr == &CrossPointSettings::showReaderMenu ||
+            setting.valuePtr == &CrossPointSettings::edgeGesturesEnabled ||
+            setting.valuePtr == &CrossPointSettings::edgeLeftAction ||
+            setting.valuePtr == &CrossPointSettings::edgeRightAction) {
+          settings.push_back(std::move(setting));
+        }
+      }
+    } else if (activeSubmenu == SettingAction::ControlsFrontButtons) {
+      settings.push_back(SettingInfo::Action(StrId::STR_REMAP_FRONT_BUTTONS, SettingAction::RemapFrontButtons));
+      for (auto& setting : all) {
+        if (sectionFor(setting) != section || !showOnDevice(setting)) continue;
+        if (setting.valuePtr == &CrossPointSettings::frontButtonFollowOrientation ||
+            setting.valuePtr == &CrossPointSettings::backShortToFileBrowser ||
+            setting.valuePtr == &CrossPointSettings::longPressButtonBehavior ||
+            setting.nameId == StrId::STR_LONG_PRESS_MENU) {
+          settings.push_back(std::move(setting));
+        }
+      }
+    }
+    rebuildRowItems();
+    return;
+  }
+
   const size_t count = std::count_if(all.begin(), all.end(), [this](const SettingInfo& setting) {
     return sectionFor(setting) == section && showOnDevice(setting);
   });
@@ -201,7 +273,38 @@ void SettingsActivity::rebuildRowItems() {
 }
 
 const char* SettingsActivity::headerTitle() const {
+  if (activeSubmenu == SettingAction::ControlsPowerButton) return tr(STR_POWER_BUTTON);
+  if (activeSubmenu == SettingAction::ControlsSideButtons) return tr(STR_SIDE_BUTTONS);
+  if (activeSubmenu == SettingAction::ControlsGestures) return tr(STR_TOUCH_AND_GESTURES);
+  if (activeSubmenu == SettingAction::ControlsFrontButtons) return tr(STR_FRONT_BUTTONS);
   return I18N.get(SETTINGS_SECTION_TITLES[static_cast<size_t>(section)]);
+}
+
+void SettingsActivity::openSubmenu(const SettingAction action) {
+  savedNavIndex = nav.selected;
+  activeSubmenu = action;
+  nav.selected = 0;
+  nav.top = 0;
+  nav.followOnBuild = true;
+  rebuildSettings();
+  requestUpdate();
+}
+
+void SettingsActivity::closeSubmenu() {
+  activeSubmenu = SettingAction::None;
+  nav.selected = savedNavIndex;
+  nav.top = 0;
+  nav.followOnBuild = true;
+  rebuildSettings();
+  requestUpdate();
+}
+
+void SettingsActivity::onBackButton() {
+  if (activeSubmenu != SettingAction::None) {
+    closeSubmenu();
+    return;
+  }
+  UiListActivity::onBackButton();
 }
 
 void SettingsActivity::activateIndex(const int index) {
@@ -252,6 +355,11 @@ void SettingsActivity::toggleSelectedSetting() {
   // same as no code at all. The screen owns the flip.
   if (setting.nameId == StrId::STR_DEV_MODE) {
     startActivityForResult(std::make_unique<DeveloperModeActivity>(renderer, mappedInput), nullptr);
+    return;
+  }
+
+  if (setting.type == SettingType::SUBMENU) {
+    openSubmenu(setting.action);
     return;
   }
 
@@ -491,6 +599,7 @@ void SettingsActivity::openSleepTimeoutPicker() {
 }
 
 std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
+  if (setting.type == SettingType::SUBMENU) return ">";
   if (setting.action == SettingAction::HomeButton) return tr(STR_CONFIGURE);
   if (setting.action == SettingAction::Plugins) return SETTINGS.pluginsEnabled ? tr(STR_ENABLED) : tr(STR_DISABLED);
   if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
@@ -571,7 +680,8 @@ void SettingsActivity::drawFooter() {
   const int selected = nav.selected;
   const bool picker =
       selected >= 0 && selected < static_cast<int>(settings.size()) &&
-      (settings[selected].type == SettingType::ACTION || settings[selected].nameId == StrId::STR_TIME_TO_SLEEP);
+      (settings[selected].type == SettingType::ACTION || settings[selected].type == SettingType::SUBMENU ||
+       settings[selected].nameId == StrId::STR_TIME_TO_SLEEP);
   const auto labels =
       mappedInput.mapLabels(tr(STR_BACK), picker ? tr(STR_SELECT) : tr(STR_TOGGLE), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

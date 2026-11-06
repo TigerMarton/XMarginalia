@@ -11,11 +11,15 @@
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
 
-enum class SettingType { TOGGLE, ENUM, ACTION, VALUE, STRING };
+enum class SettingType { TOGGLE, ENUM, ACTION, VALUE, STRING, SUBMENU };
 
 enum class SettingAction {
   None,
   RemapFrontButtons,
+  ControlsPowerButton,
+  ControlsSideButtons,
+  ControlsGestures,
+  ControlsFrontButtons,
   CustomiseStatusBar,
   ClockSettings,
   KOReaderSync,
@@ -129,6 +133,14 @@ struct SettingInfo {
     return s;
   }
 
+  static SettingInfo Submenu(StrId nameId, SettingAction action) {
+    SettingInfo s;
+    s.nameId = nameId;
+    s.type = SettingType::SUBMENU;
+    s.action = action;
+    return s;
+  }
+
   static SettingInfo Value(StrId nameId, uint8_t CrossPointSettings::* ptr, const ValueRange valueRange,
                            const char* key = nullptr, StrId category = StrId::STR_NONE_OPT) {
     SettingInfo s;
@@ -197,6 +209,13 @@ class SettingsActivity final : public UiListActivity {
   // buildScreen() by assigning into the existing strings.
   std::vector<std::string> rowValues_;
   std::vector<freeink::ui::ListItem> rowItems_;
+
+  SettingAction activeSubmenu = SettingAction::None;
+  int savedNavIndex = 0;
+
+  void openSubmenu(SettingAction action);
+  void closeSubmenu();
+  void onBackButton() override;
 
   void rebuildSettings();
   void rebuildRowItems();

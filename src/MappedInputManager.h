@@ -158,6 +158,20 @@ class MappedInputManager {
   // Back = left-to-right swipe anchored at the left edge. Public so swipe-mode
   // page turns (reader) can exclude it from a plain SwipeDir::Right.
   bool wasBackGesture() const;
+
+  enum class EdgeGesture : uint8_t {
+    None,
+    LeftUp,
+    LeftDown,
+    RightUp,
+    RightDown,
+  };
+
+  // Vertical edge swipe along the left or right screen border (e.g. brightness, warmth, font size).
+  EdgeGesture wasVerticalEdgeGesture(int* deltaY = nullptr) const;
+
+  // True when side Up and Down buttons are held simultaneously as a chord combo.
+  bool wasSideButtonCombo() const;
   // Home-key boards use a short Home-key tap to exit; their bottom-edge swipe
   // is intentionally unused. Other boards retain the bottom-edge Home gesture.
   // The reader menu remains on its existing top-edge gesture and middle tap.
@@ -238,6 +252,7 @@ class MappedInputManager {
   mutable unsigned long touchHeldOverrideAt = 0;
   mutable uint16_t longPressFiredButtons = 0;
   mutable uint16_t suppressedReleaseButtons = 0;
+  mutable bool sideComboFired = false;
 #if FREEINK_CAP_TOUCH
   bool powerConfirmClickFrame = false;
 #endif

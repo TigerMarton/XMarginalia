@@ -261,6 +261,14 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   longPressMenuFunction = clamp(doc["longPressMenuFunction"] | (uint8_t)LP_MENU_DISABLED,
                                 (uint8_t)LONG_PRESS_MENU_FUNCTION_COUNT, (uint8_t)LP_MENU_DISABLED);
   shortPwrBtn = clamp(doc["shortPwrBtn"] | (uint8_t)IGNORE, (uint8_t)SHORT_PWRBTN_COUNT, (uint8_t)IGNORE);
+  if (doc["sideButtonLongPress"].isNull() && !doc["longPressButtonBehavior"].isNull()) {
+    const uint8_t lp = doc["longPressButtonBehavior"] | (uint8_t)OFF;
+    if (lp == CHAPTER_SKIP) {
+      sideButtonLongPress = SIDE_LONG_CHAPTER_SKIP;
+    } else if (lp == ORIENTATION_CHANGE) {
+      sideButtonLongPress = SIDE_LONG_ORIENTATION_CHANGE;
+    }
+  }
   if (BoardConfig::hasHomeKey() && doc["homeButtonLongPressAction"].isNull() &&
       !doc["longPressMenuFunction"].isNull()) {
     static constexpr HomeButtonAction LEGACY[] = {HomeButtonAction::Sync,       HomeButtonAction::Ignore,

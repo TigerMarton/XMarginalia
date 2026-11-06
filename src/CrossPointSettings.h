@@ -177,7 +177,38 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     PWR_BOOKMARK = 7,
     PWR_SYNC = 8,
     PWR_READER_MENU = 9,
+    PWR_QUICK_ACTIONS = 10,
     SHORT_PWRBTN_COUNT
+  };
+
+  // Touch edge swipe actions
+  enum EDGE_GESTURE_ACTION {
+    EDGE_ACTION_OFF = 0,
+    EDGE_ACTION_WARM_LIGHT = 1,
+    EDGE_ACTION_COOL_LIGHT = 2,
+    EDGE_ACTION_BRIGHTNESS = 3,
+    EDGE_ACTION_FONT_SIZE = 4,
+    EDGE_ACTION_COUNT
+  };
+
+  // Side button long-press behavior in the reader
+  enum SIDE_LONG_PRESS {
+    SIDE_LONG_OFF = 0,
+    SIDE_LONG_CHAPTER_SKIP = 1,
+    SIDE_LONG_ORIENTATION_CHANGE = 2,
+    SIDE_LONG_FONT_SIZE = 3,
+    SIDE_LONG_BOOKMARK = 4,
+    SIDE_LONG_QUICK_ACTIONS = 5,
+    SIDE_LONG_PRESS_COUNT
+  };
+
+  // Side button combo actions (Up + Down held simultaneously)
+  enum SIDE_BUTTON_COMBO {
+    COMBO_OFF = 0,
+    COMBO_QUICK_LOCK = 1,
+    COMBO_QUICK_ACTIONS = 2,
+    COMBO_FRONTLIGHT = 3,
+    SIDE_BUTTON_COMBO_COUNT
   };
 
   // Long-press Confirm action while reading an EPUB. Persisted values are stable;
@@ -351,6 +382,13 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t hideBatteryPercentage = HIDE_NEVER;
   // Long-press page turn button behavior
   uint8_t longPressButtonBehavior = OFF;
+  // Side button long-press and combo actions
+  uint8_t sideButtonLongPress = SIDE_LONG_OFF;
+  uint8_t sideButtonComboAction = COMBO_OFF;
+  // Touch Edge Gestures
+  uint8_t edgeGesturesEnabled = 1;
+  uint8_t edgeLeftAction = EDGE_ACTION_WARM_LIGHT;
+  uint8_t edgeRightAction = EDGE_ACTION_COOL_LIGHT;
   // Long-press Confirm function in EPUB reader (cycles through LONG_PRESS_MENU_FUNCTION values).
   // Defaults to Disabled so shortcut-based bookmark toggling remains opt-in.
   uint8_t longPressMenuFunction = LP_MENU_DISABLED;

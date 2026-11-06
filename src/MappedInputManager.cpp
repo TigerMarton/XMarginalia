@@ -326,6 +326,17 @@ MappedInputManager::SwipeDir MappedInputManager::wasSwipe(int* startX, int* star
   if (!decodeSwipe(sx, sy, ex, ey)) return SwipeDir::None;
   if (startX) *startX = sx;
   if (startY) *startY = sy;
+
+  if (SETTINGS.edgeGesturesEnabled) {
+    const int screenW = renderer.getScreenWidth();
+    const int edgeLimit = static_cast<int>(screenW * 0.18f);
+    const int adx = std::abs(ex - sx);
+    const int ady = std::abs(ey - sy);
+    if (ady > adx && (sx <= edgeLimit || sx >= screenW - edgeLimit)) {
+      return SwipeDir::None;
+    }
+  }
+
   switch (fui::swipeDirection(sx, sy, ex, ey)) {
     case fui::SwipeDir::Left:
       return SwipeDir::Left;
@@ -338,6 +349,58 @@ MappedInputManager::SwipeDir MappedInputManager::wasSwipe(int* startX, int* star
     default:
       return SwipeDir::None;
   }
+}
+
+MappedInputManager::EdgeGesture MappedInputManager::wasVerticalEdgeGesture(int* deltaY) const {
+  if (!SETTINGS.edgeGesturesEnabled || !gpio.hasTouch()) return EdgeGesture::None;
+  int sx = 0;
+  int sy = 0;
+  int ex = 0;
+  int ey = 0;
+  if (!decodeSwipe(sx, sy, ex, ey)) return EdgeGesture::None;
+
+  const int screenW = renderer.getScreenWidth();
+  const int dx = ex - sx;
+  const int dy = ey - sy;
+  const int adx = std::abs(dx);
+  const int ady = std::abs(dy);
+
+  if (ady <= adx || ady < 20) return EdgeGesture::None;
+
+  const int edgeLimit = static_cast<int>(screenW * 0.18f);
+  if (sx <= edgeLimit && ex <= static_cast<int>(screenW * 0.25f)) {
+    rememberTouchHeldTime();
+    if (deltaY) *deltaY = -dy;
+    return (dy < 0) ? EdgeGesture::LeftUp : EdgeGesture::LeftDown;
+  }
+
+  if (sx >= screenW - edgeLimit && ex >= screenW - static_cast<int>(screenW * 0.25f)) {
+    rememberTouchHeldTime();
+    if (deltaY) *deltaY = -dy;
+    return (dy < 0) ? EdgeGesture::RightUp : EdgeGesture::RightDown;
+  }
+
+  return EdgeGesture::None;
+}
+
+bool MappedInputManager::wasSideButtonCombo() const {
+  if (SETTINGS.sideButtonComboAction == CrossPointSettings::COMBO_OFF) return false;
+  const bool upPressed = gpio.isPressed(HalGPIO::BTN_UP);
+  const bool downPressed = gpio.isPressed(HalGPIO::BTN_DOWN);
+
+  if (upPressed && downPressed) {
+    if (!sideComboFired) {
+      sideComboFired = true;
+      swallowNextReleaseOfHeldButtons();
+      return true;
+    }
+    return false;
+  }
+
+  if (!upPressed && !downPressed) {
+    sideComboFired = false;
+  }
+  return false;
 }
 
 // Edge classification (which swipe counts as an edge gesture) lives in the

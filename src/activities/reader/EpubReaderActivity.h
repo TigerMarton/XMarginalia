@@ -245,6 +245,14 @@ class EpubReaderActivity final : public ReaderActivity {
   void renderBook() override;
   void onEndOfBookRendered() override;
 
+  bool showEdgeOsd = false;
+  char edgeOsdText[32] = {0};
+  unsigned long edgeOsdTime = 0;
+  bool quickLocked = false;
+
+  void openQuickActions();
+  void handleEdgeGesture(MappedInputManager::EdgeGesture gesture, int deltaY);
+
  public:
   explicit EpubReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookPath,
                               bool allowFastInitialRefresh)

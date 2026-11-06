@@ -53,6 +53,7 @@
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
+#include "activities/util/FrontlightPanelActivity.h"
 #include "clippings/ClippingText.h"
 #include "clippings/ClippingsManager.h"
 #include "components/UITheme.h"
@@ -642,6 +643,66 @@ void EpubReaderActivity::loop() {
     return;
   }
 
+  if (quickLocked) {
+    if (mappedInput.wasSideButtonCombo() || mappedInput.wasReleased(MappedInputManager::Button::Power)) {
+      quickLocked = false;
+      showEdgeOsd = true;
+      edgeOsdTime = millis();
+      snprintf(edgeOsdText, sizeof(edgeOsdText), "Unlocked");
+      requestUpdate();
+      return;
+    }
+    return;
+  }
+
+  if (showEdgeOsd && (millis() - edgeOsdTime) >= 800) {
+    showEdgeOsd = false;
+    requestUpdate();
+  }
+
+  if (mappedInput.wasSideButtonCombo()) {
+    if (SETTINGS.sideButtonComboAction == CrossPointSettings::COMBO_QUICK_ACTIONS) {
+      openQuickActions();
+      return;
+    }
+    if (SETTINGS.sideButtonComboAction == CrossPointSettings::COMBO_QUICK_LOCK) {
+      quickLocked = true;
+      showEdgeOsd = true;
+      edgeOsdTime = millis();
+      snprintf(edgeOsdText, sizeof(edgeOsdText), "%s", tr(STR_QUICK_LOCK));
+      requestUpdate();
+      return;
+    }
+    if (SETTINGS.sideButtonComboAction == CrossPointSettings::COMBO_FRONTLIGHT) {
+      if (Frontlight.present()) {
+        Frontlight.setOn(!Frontlight.isOn());
+        requestUpdate();
+      }
+      return;
+    }
+  }
+
+  int edgeDeltaY = 0;
+  const auto edgeGesture = mappedInput.wasVerticalEdgeGesture(&edgeDeltaY);
+  if (edgeGesture != MappedInputManager::EdgeGesture::None) {
+    handleEdgeGesture(edgeGesture, edgeDeltaY);
+    return;
+  }
+
+  if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PWR_QUICK_ACTIONS &&
+      mappedInput.wasReleased(MappedInputManager::Button::Power) &&
+      !mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+    openQuickActions();
+    return;
+  }
+
+  if (SETTINGS.sideButtonLongPress == CrossPointSettings::SIDE_LONG_QUICK_ACTIONS &&
+      (mappedInput.wasLongPressed(MappedInputManager::Button::PageBack, ReaderUtils::SKIP_HOLD_MS) ||
+       mappedInput.wasLongPressed(MappedInputManager::Button::PageForward, ReaderUtils::SKIP_HOLD_MS))) {
+    openQuickActions();
+    return;
+  }
+
   rememberBookOnceRendered();
 
   // There WAS an idle prewarm here: 400ms after each page landed, the reader
@@ -921,6 +982,10 @@ void EpubReaderActivity::loop() {
   const bool touchMenu = ReaderUtils::isTouchMenuGesture(renderer, mappedInput);
   if (confirmReleased || touchMenu) {
     if (touchMenu) haptic_feedback::touchAction();
+    if (mappedInput.tapWasHeldLong()) {
+      openQuickActions();
+      return;
+    }
     // Toolbar style: the page is on screen and in the framebuffer, so paint the
     // toolbar over it (one refresh) instead of pushing a full-screen menu.
     if (usesToolbarMenu() && section) {
@@ -1967,6 +2032,10 @@ void EpubReaderActivity::renderBook() {
 
   if (showClippingMessage) {
     GUI.drawPopup(renderer, I18N.get(clippingMessage));
+  }
+
+  if (showEdgeOsd) {
+    GUI.drawPopup(renderer, edgeOsdText);
   }
 
   pageBufferStale = false;  // the page is back in the framebuffer
@@ -3487,4 +3556,97 @@ CrossPointPosition EpubReaderActivity::getCurrentPosition() const {
     localPos.hasParagraphIndex = true;
   }
   return localPos;
+}
+
+void EpubReaderActivity::openQuickActions() {
+  using MA = EpubReaderMenuActivity::MenuAction;
+  static constexpr StrId kQuickActionIds[] = {
+      StrId::STR_SELECT_CHAPTER, StrId::STR_BOOKMARKS,      StrId::STR_FRONTLIGHT,
+      StrId::STR_TEXT_SETTINGS,  StrId::STR_GO_HOME_BUTTON,
+  };
+  overlayPopup.show(StrId::STR_QUICK_ACTIONS, kQuickActionIds, static_cast<int>(std::size(kQuickActionIds)), -1,
+                    [this](int idx) {
+                      switch (idx) {
+                        case 0:
+                          onReaderMenuConfirm(MA::SELECT_CHAPTER);
+                          break;
+                        case 1:
+                          onReaderMenuConfirm(MA::BOOKMARKS);
+                          break;
+                        case 2:
+                          if (Frontlight.present()) {
+                            startActivityForResult(std::make_unique<FrontlightPanelActivity>(renderer, mappedInput),
+                                                   [this](const ActivityResult&) { requestUpdate(); });
+                          }
+                          break;
+                        case 3:
+                          onReaderMenuConfirm(MA::TEXT_SETTINGS);
+                          break;
+                        case 4:
+                          onReaderMenuConfirm(MA::GO_HOME);
+                          break;
+                        default:
+                          break;
+                      }
+                    });
+  paintOverlayPopup();
+}
+
+void EpubReaderActivity::handleEdgeGesture(MappedInputManager::EdgeGesture gesture, int deltaY) {
+  if (gesture == MappedInputManager::EdgeGesture::None) return;
+
+  const bool isLeft =
+      (gesture == MappedInputManager::EdgeGesture::LeftUp || gesture == MappedInputManager::EdgeGesture::LeftDown);
+  const bool isUp =
+      (gesture == MappedInputManager::EdgeGesture::LeftUp || gesture == MappedInputManager::EdgeGesture::RightUp);
+  const uint8_t action = isLeft ? SETTINGS.edgeLeftAction : SETTINGS.edgeRightAction;
+
+  switch (action) {
+    case CrossPointSettings::EDGE_ACTION_WARM_LIGHT: {
+      if (!Frontlight.present() || !Frontlight.hasColorTemperature()) return;
+      int step = isUp ? 10 : -10;
+      int cur = Frontlight.warmth();
+      int next = std::clamp(cur + step, 0, 100);
+      Frontlight.setWarmth(static_cast<uint8_t>(next));
+      SETTINGS.frontlightWarmth = static_cast<uint8_t>(next);
+      if (!Frontlight.isOn()) Frontlight.setOn(true);
+      snprintf(edgeOsdText, sizeof(edgeOsdText), "%s: %d%%", tr(STR_WARMTH), next);
+      showEdgeOsd = true;
+      edgeOsdTime = millis();
+      requestUpdate();
+      break;
+    }
+    case CrossPointSettings::EDGE_ACTION_COOL_LIGHT:
+    case CrossPointSettings::EDGE_ACTION_BRIGHTNESS: {
+      if (!Frontlight.present()) return;
+      int step = isUp ? 10 : -10;
+      int cur = Frontlight.brightness();
+      int next = std::clamp(cur + step, 10, 100);
+      Frontlight.setBrightness(static_cast<uint8_t>(next));
+      SETTINGS.frontlightBrightness = static_cast<uint8_t>(next);
+      if (!Frontlight.isOn()) Frontlight.setOn(true);
+      const char* label =
+          (action == CrossPointSettings::EDGE_ACTION_COOL_LIGHT) ? tr(STR_COOL_LIGHT) : tr(STR_BRIGHTNESS);
+      snprintf(edgeOsdText, sizeof(edgeOsdText), "%s: %d%%", label, next);
+      showEdgeOsd = true;
+      edgeOsdTime = millis();
+      requestUpdate();
+      break;
+    }
+    case CrossPointSettings::EDGE_ACTION_FONT_SIZE: {
+      int step = isUp ? 1 : -1;
+      int next = std::clamp<int>(SETTINGS.fontPointSize + step, 8, 36);
+      if (next != SETTINGS.fontPointSize) {
+        SETTINGS.fontPointSize = static_cast<uint8_t>(next);
+        applyReaderTextSettings();
+        snprintf(edgeOsdText, sizeof(edgeOsdText), "%s: %d pt", tr(STR_FONT_SIZE), next);
+        showEdgeOsd = true;
+        edgeOsdTime = millis();
+        requestUpdate();
+      }
+      break;
+    }
+    default:
+      break;
+  }
 }

@@ -87,6 +87,9 @@ class HalGPIO {
   // Cheap enough to call every few ms.
   bool rawInputActive();
   bool hasTouch() const;
+  // True when the board has physical front buttons (Back/Confirm/Left/Right),
+  // e.g. Xteink X4, X3, X4 Classic, OnePage. False on touch-only or side-only boards (Picco, X4 Pro, Sticky).
+  bool hasFrontButtons() const;
   // Capacitive Home key reported by the touch controller (X4 Pro). The tap
   // event fires on release and excludes a long hold.
   bool hasHomeKey() const;

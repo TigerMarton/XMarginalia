@@ -240,6 +240,7 @@ inline std::vector<ShortPowerButtonOption> shortPowerButtonOptions() {
     options.push_back({StrId::STR_KOSYNC, CrossPointSettings::PWR_SYNC});
     options.push_back({StrId::STR_READER_MENU, CrossPointSettings::PWR_READER_MENU});
   }
+  options.push_back({StrId::STR_QUICK_ACTIONS, CrossPointSettings::PWR_QUICK_ACTIONS});
   return options;
 }
 

@@ -176,6 +176,25 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                          {StrId::STR_LONG_PRESS_BEHAVIOR_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP,
                           StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION},
                          "longPressButtonBehavior", StrId::STR_CAT_CONTROLS));
+  emit(SettingInfo::Enum(StrId::STR_SIDE_LONG_PRESS, &CrossPointSettings::sideButtonLongPress,
+                         {StrId::STR_STATE_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP, StrId::STR_ORIENTATION,
+                          StrId::STR_FONT_SIZE, StrId::STR_BOOKMARK_OPTION, StrId::STR_QUICK_ACTIONS},
+                         "sideButtonLongPress", StrId::STR_CAT_CONTROLS));
+  emit(SettingInfo::Enum(StrId::STR_SIDE_BUTTON_COMBO, &CrossPointSettings::sideButtonComboAction,
+                         {StrId::STR_STATE_OFF, StrId::STR_QUICK_LOCK, StrId::STR_QUICK_ACTIONS, StrId::STR_FRONTLIGHT},
+                         "sideButtonComboAction", StrId::STR_CAT_CONTROLS));
+  if (BoardConfig::hasTouch()) {
+    emit(SettingInfo::Toggle(StrId::STR_EDGE_GESTURES, &CrossPointSettings::edgeGesturesEnabled, "edgeGesturesEnabled",
+                             StrId::STR_CAT_CONTROLS));
+    emit(SettingInfo::Enum(
+        StrId::STR_EDGE_LEFT_ACTION, &CrossPointSettings::edgeLeftAction,
+        {StrId::STR_STATE_OFF, StrId::STR_WARMTH, StrId::STR_COOL_LIGHT, StrId::STR_BRIGHTNESS, StrId::STR_FONT_SIZE},
+        "edgeLeftAction", StrId::STR_CAT_CONTROLS));
+    emit(SettingInfo::Enum(
+        StrId::STR_EDGE_RIGHT_ACTION, &CrossPointSettings::edgeRightAction,
+        {StrId::STR_STATE_OFF, StrId::STR_WARMTH, StrId::STR_COOL_LIGHT, StrId::STR_BRIGHTNESS, StrId::STR_FONT_SIZE},
+        "edgeRightAction", StrId::STR_CAT_CONTROLS));
+  }
   emit(buildLongPressMenuSetting());
   // Double-click power frontlight shortcut only exists on the X4 Pro.
   if (BoardConfig::isX4Pro())

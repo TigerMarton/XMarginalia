@@ -217,6 +217,13 @@ unsigned long HalGPIO::getPowerButtonHeldTime() const {
 
 bool HalGPIO::hasTouch() const { return inputMgr.hasTouch(); }
 
+bool HalGPIO::hasFrontButtons() const {
+  return BoardConfig::ACTIVE.inputStyle == BoardConfig::InputStyle::XteinkAdcLadder ||
+         BoardConfig::ACTIVE.inputStyle == BoardConfig::InputStyle::OnePageAdcLadder ||
+         (BoardConfig::ACTIVE.input.back != BoardConfig::PIN_UNASSIGNED &&
+          BoardConfig::ACTIVE.input.confirm != BoardConfig::PIN_UNASSIGNED);
+}
+
 bool HalGPIO::hasHomeKey() const { return BoardConfig::hasHomeKey(); }
 
 bool HalGPIO::wasHomeKeyPressed() const { return inputMgr.wasHomeKeyPressed(); }
