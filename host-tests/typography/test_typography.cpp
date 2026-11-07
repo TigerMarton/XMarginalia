@@ -7,13 +7,13 @@
 #include "../../src/activities/reader/BookSettings.h"
 
 static int g_checks = 0;
-#define CHECK(cond)                                                      \
-  do {                                                                   \
-    g_checks++;                                                          \
-    if (!(cond)) {                                                       \
+#define CHECK(cond)                                                    \
+  do {                                                                 \
+    g_checks++;                                                        \
+    if (!(cond)) {                                                     \
       fprintf(stderr, "FAIL: %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-      return 1;                                                          \
-    }                                                                    \
+      return 1;                                                        \
+    }                                                                  \
   } while (0)
 
 int test_book_settings_defaults() {
@@ -151,8 +151,8 @@ int test_guide_dot_spacing_math() {
 int test_forced_paragraph_indent_logic() {
   // Forced paragraph indent rule:
   // If forced, extraParagraphSpacing = false and paragraphIndentSpaces = std::max(spaces, (uint8_t)2)
-  auto resolveIndent = [](bool forceIndent, bool extraSpacing, uint8_t spaces,
-                          bool& outExtraSpacing, uint8_t& outSpaces) {
+  auto resolveIndent = [](bool forceIndent, bool extraSpacing, uint8_t spaces, bool& outExtraSpacing,
+                          uint8_t& outSpaces) {
     if (forceIndent) {
       outExtraSpacing = false;
       outSpaces = std::max(spaces, static_cast<uint8_t>(2));

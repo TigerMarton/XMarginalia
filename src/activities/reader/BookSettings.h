@@ -17,9 +17,9 @@ class BookSettings {
   uint8_t paragraphAlignment = USE_GLOBAL;
   uint8_t paragraphIndentSpaces = USE_GLOBAL;
   uint8_t forceParagraphIndent = USE_GLOBAL;  // 0 = off, 1 = on, USE_GLOBAL = use global setting
-  uint8_t guideDots = USE_GLOBAL;              // 0 = off, 1 = on, USE_GLOBAL = use global setting
-  uint8_t hyphenationEnabled = USE_GLOBAL;     // 0 = off, 1 = on, USE_GLOBAL = use global setting
-  uint8_t focusReadingEnabled = USE_GLOBAL;    // 0 = off, 1 = on, USE_GLOBAL = use global setting
+  uint8_t guideDots = USE_GLOBAL;             // 0 = off, 1 = on, USE_GLOBAL = use global setting
+  uint8_t hyphenationEnabled = USE_GLOBAL;    // 0 = off, 1 = on, USE_GLOBAL = use global setting
+  uint8_t focusReadingEnabled = USE_GLOBAL;   // 0 = off, 1 = on, USE_GLOBAL = use global setting
 
   static std::string settingsFilePath(const std::string& cachePath);
   static BookSettings load(const std::string& cachePath);

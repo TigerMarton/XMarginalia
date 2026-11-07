@@ -7,6 +7,7 @@
 #if defined(ARDUINO_ARCH_ESP32) || defined(PLATFORMIO)
 #include <HalStorage.h>
 #include <Logging.h>
+
 #include "CrossPointSettings.h"
 #include "util/FileContentEquals.h"
 #else
@@ -70,16 +71,16 @@ std::string BookSettings::settingsFilePath(const std::string& cachePath) {
 
 std::string BookSettings::toJson() const {
   char buf[256];
-  const int written = snprintf(
-      buf, sizeof(buf),
-      "{\"enabled\":%s,\"fontPointSize\":%u,\"fontFamily\":%u,\"sdFontFamilyName\":\"%s\",\"lineSpacing\":%u,"
-      "\"screenMargin\":%u,\"paragraphAlignment\":%u,\"paragraphIndentSpaces\":%u,\"forceParagraphIndent\":%u,"
-      "\"guideDots\":%u,\"hyphenationEnabled\":%u,\"focusReadingEnabled\":%u}",
-      enabled ? "true" : "false", static_cast<unsigned>(fontPointSize), static_cast<unsigned>(fontFamily),
-      sdFontFamilyName.c_str(), static_cast<unsigned>(lineSpacing), static_cast<unsigned>(screenMargin),
-      static_cast<unsigned>(paragraphAlignment), static_cast<unsigned>(paragraphIndentSpaces),
-      static_cast<unsigned>(forceParagraphIndent), static_cast<unsigned>(guideDots),
-      static_cast<unsigned>(hyphenationEnabled), static_cast<unsigned>(focusReadingEnabled));
+  const int written =
+      snprintf(buf, sizeof(buf),
+               "{\"enabled\":%s,\"fontPointSize\":%u,\"fontFamily\":%u,\"sdFontFamilyName\":\"%s\",\"lineSpacing\":%u,"
+               "\"screenMargin\":%u,\"paragraphAlignment\":%u,\"paragraphIndentSpaces\":%u,\"forceParagraphIndent\":%u,"
+               "\"guideDots\":%u,\"hyphenationEnabled\":%u,\"focusReadingEnabled\":%u}",
+               enabled ? "true" : "false", static_cast<unsigned>(fontPointSize), static_cast<unsigned>(fontFamily),
+               sdFontFamilyName.c_str(), static_cast<unsigned>(lineSpacing), static_cast<unsigned>(screenMargin),
+               static_cast<unsigned>(paragraphAlignment), static_cast<unsigned>(paragraphIndentSpaces),
+               static_cast<unsigned>(forceParagraphIndent), static_cast<unsigned>(guideDots),
+               static_cast<unsigned>(hyphenationEnabled), static_cast<unsigned>(focusReadingEnabled));
   if (written > 0 && static_cast<size_t>(written) < sizeof(buf)) {
     return std::string(buf, written);
   }
