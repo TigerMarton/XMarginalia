@@ -28,7 +28,7 @@ class PageElement {
   int16_t yPos;
   explicit PageElement(const int16_t xPos, const int16_t yPos) : xPos(xPos), yPos(yPos) {}
   virtual ~PageElement() = default;
-  virtual void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) = 0;
+  virtual void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset, bool guideDots = false) = 0;
   virtual bool serialize(HalFile& file) = 0;
   virtual PageElementTag getTag() const = 0;  // Add type identification
 };
@@ -41,7 +41,7 @@ class PageLine final : public PageElement {
   PageLine(std::unique_ptr<TextBlock> block, const int16_t xPos, const int16_t yPos)
       : PageElement(xPos, yPos), block(std::move(block)) {}
   const TextBlock* getBlock() const { return block.get(); }
-  void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) override;
+  void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset, bool guideDots = false) override;
   bool serialize(HalFile& file) override;
   PageElementTag getTag() const override { return TAG_PageLine; }
   static std::unique_ptr<PageLine> deserialize(HalFile& file);
@@ -54,7 +54,7 @@ class PageImage final : public PageElement {
  public:
   PageImage(std::unique_ptr<ImageBlock> block, const int16_t xPos, const int16_t yPos)
       : PageElement(xPos, yPos), imageBlock(std::move(block)) {}
-  void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) override;
+  void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset, bool guideDots = false) override;
   void renderPlaceholder(GfxRenderer& renderer, int xOffset, int yOffset) const;
   bool serialize(HalFile& file) override;
   PageElementTag getTag() const override { return TAG_PageImage; }
@@ -70,7 +70,7 @@ class PageHorizontalRule final : public PageElement {
   PageHorizontalRule(uint16_t width, uint8_t thickness, const int16_t xPos, const int16_t yPos)
       : PageElement(xPos, yPos), width(width), thickness(thickness) {}
 
-  void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) override;
+  void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset, bool guideDots = false) override;
   bool serialize(HalFile& file) override;
   PageElementTag getTag() const override { return TAG_PageHorizontalRule; }
   static std::unique_ptr<PageHorizontalRule> deserialize(HalFile& file);
@@ -92,7 +92,7 @@ class PageDropCap final : public PageElement {
   PageDropCap(int32_t fontId, uint16_t scale256, EpdFontFamily::Style style, const char* utf8, int16_t xPos,
               int16_t yPos);
   const char* getText() const { return text; }
-  void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) override;
+  void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset, bool guideDots = false) override;
   bool serialize(HalFile& file) override;
   PageElementTag getTag() const override { return TAG_PageDropCap; }
   static std::unique_ptr<PageDropCap> deserialize(HalFile& file);
@@ -114,7 +114,7 @@ class PageBorderBox final : public PageElement {
         height(height),
         sides{sides[0], sides[1], sides[2], sides[3]},
         shaded(shaded) {}
-  void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) override;
+  void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset, bool guideDots = false) override;
   bool serialize(HalFile& file) override;
   PageElementTag getTag() const override { return TAG_PageBorderBox; }
   static std::unique_ptr<PageBorderBox> deserialize(HalFile& file);
@@ -167,9 +167,10 @@ class Page {
     return true;
   }
 
-  void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) const;
-  void renderImages(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) const;
-  void renderWithImagePlaceholders(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) const;
+  void render(GfxRenderer& renderer, int fontId, int xOffset = 0, int yOffset = 0, bool guideDots = false) const;
+  void renderImages(GfxRenderer& renderer, int fontId, int xOffset = 0, int yOffset = 0) const;
+  void renderWithImagePlaceholders(GfxRenderer& renderer, int fontId, int xOffset = 0, int yOffset = 0,
+                                   bool guideDots = false) const;
   bool serialize(HalFile& file) const;
   static std::unique_ptr<Page> deserialize(HalFile& file);
 

@@ -19,7 +19,8 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
                                                const std::string& title, const int currentPage, const int totalPages,
                                                const int bookProgressPercent, const uint8_t currentOrientation,
                                                const bool hasFootnotes, const bool hasBookmarks,
-                                               const bool hasClippings, MenuAction& selectedAction)
+                                               const bool hasClippings, MenuAction& selectedAction,
+                                               const bool hasCustomBookSettings)
     : UiListActivity("EpubReaderMenu", renderer, mappedInput),
       selectedAction(selectedAction),
       title(title),
@@ -27,7 +28,7 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
       currentPage(currentPage),
       totalPages(totalPages),
       bookProgressPercent(bookProgressPercent) {
-  buildMenuItems(menuItems, hasFootnotes, hasBookmarks, hasClippings);
+  buildMenuItems(menuItems, hasFootnotes, hasBookmarks, hasClippings, hasCustomBookSettings);
   buildMenuRowItems();
 }
 
@@ -62,7 +63,8 @@ void EpubReaderMenuActivity::buildMenuRowItems() {
 }
 
 void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const bool hasFootnotes,
-                                            const bool hasBookmarks, const bool hasClippings) {
+                                            const bool hasBookmarks, const bool hasClippings,
+                                            const bool hasCustomBookSettings) {
   items.clear();
   items.reserve(MAX_MENU_ITEMS);
   items.push_back({MenuAction::SELECT_CHAPTER, StrId::STR_SELECT_CHAPTER});
@@ -107,6 +109,8 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const 
   }
   items.push_back({MenuAction::DELETE_CACHE, StrId::STR_DELETE_CACHE});
   items.push_back({MenuAction::TEXT_SETTINGS, StrId::STR_TEXT_SETTINGS});
+  items.push_back({MenuAction::TOGGLE_BOOK_SETTINGS,
+                   hasCustomBookSettings ? StrId::STR_USE_GLOBAL_FORMATTING : StrId::STR_USE_CUSTOM_FORMATTING});
 }
 
 void EpubReaderMenuActivity::toggleBluetooth() {

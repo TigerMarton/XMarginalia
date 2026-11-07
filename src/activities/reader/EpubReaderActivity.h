@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "BookReadingStats.h"
+#include "BookSettings.h"
 #include "BookStatsTracking.h"
 #include "BookmarkEntry.h"
 #include "ChapterPosition.h"
@@ -256,6 +257,7 @@ class EpubReaderActivity final : public ReaderActivity {
 
   BookReadingStats stats;
   GlobalReadingStats globalStats;
+  BookSettings bookSettings;
   bool statsTrackingActive = false;
   bool bookStatsEnabled = true;
   bool paceDirty = false;

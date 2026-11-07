@@ -9,6 +9,8 @@
 
 #include "util/HomeButtonInput.h"
 
+class BookSettings;
+
 class CrossPointSettings : public PersistableStore<CrossPointSettings> {
  private:
   // Private constructor for singleton
@@ -485,6 +487,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t trackReadingStats = 1;
   // Idle threshold for reading stats in seconds (defaults to 300 = 5 minutes).
   uint16_t readingIdleTimeThresholdSeconds = 300;
+  // Eye-pacing reading guide dots between words (0 = off, 1 = on)
+  uint8_t guideDotsEnabled = 0;
+  // Force first-line paragraph indent (and disable extra paragraph spacing)
+  uint8_t forceParagraphIndent = 0;
 
   bool shouldTrackReadingStats() const { return trackReadingStats != 0; }
   uint16_t getReadingIdleTimeThresholdSeconds() const { return readingIdleTimeThresholdSeconds; }
@@ -503,6 +509,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;
   }
   int getReaderFontId() const;
+  int getReaderFontIdFor(const char* sdFamily, uint8_t pointSize) const;
 
   // Drop the SD font selection and fall back to the built-in family. The reader
   // point size comes back into BUILTIN_READER_POINT_SIZES with it, since that is
@@ -547,7 +554,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // viewport is renderer/orientation-derived, so the caller supplies it —
   // passing it in keeps a spec from ever existing in a half-filled state.
   // Unlocked for the same reason as statusBarSpec(); see the note above.
-  ReaderRenderSpec readerRenderSpec(uint16_t viewportWidth, uint16_t viewportHeight) const;
+  ReaderRenderSpec readerRenderSpec(uint16_t viewportWidth, uint16_t viewportHeight,
+                                    const BookSettings* bookSettings = nullptr) const;
 
   static const char* getFilePath() { return "/.crosspoint/settings.json"; }
   void toJson(JsonDocument& doc) const;

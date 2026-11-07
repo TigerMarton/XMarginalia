@@ -9,13 +9,13 @@
 namespace nearby = freeink::nearby;
 
 static int testsRun = 0;
-#define TEST_ASSERT(cond)                                                 \
-  do {                                                                    \
-    ++testsRun;                                                           \
-    if (!(cond)) {                                                        \
+#define TEST_ASSERT(cond)                                                \
+  do {                                                                   \
+    ++testsRun;                                                          \
+    if (!(cond)) {                                                       \
       fprintf(stderr, "FAIL: %s at %s:%d\n", #cond, __FILE__, __LINE__); \
-      exit(1);                                                            \
-    }                                                                     \
+      exit(1);                                                           \
+    }                                                                    \
   } while (0)
 
 // CRC32 test vector for "123456789": standard CRC-32 is 0xCBF43926.

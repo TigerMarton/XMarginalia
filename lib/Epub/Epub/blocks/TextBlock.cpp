@@ -189,7 +189,8 @@ int TextBlock::extraAscent(const GfxRenderer& renderer, const int sectionFontId)
          renderer.getFontAscenderSize(renderFontId(renderer, blockFontId(sectionFontId), sectionFontId));
 }
 
-void TextBlock::render(const GfxRenderer& renderer, const int sectionFontId, const int x, const int y) const {
+void TextBlock::render(const GfxRenderer& renderer, const int sectionFontId, const int x, const int y,
+                       const bool guideDots) const {
   if (!isValid) {
     LOG_ERR("TXB", "Render skipped: invalid block");
     return;
@@ -399,6 +400,20 @@ void TextBlock::render(const GfxRenderer& renderer, const int sectionFontId, con
 
     if (scanning) {
       continue;
+    }
+
+    if (guideDots && i + 1 < numWords) {
+      const int wordWidth = renderer.getTextAdvanceX(wordFont, word, currentStyle, tracking, baseDir,
+                                                     GfxRenderer::TextMeasureMode::Rendered);
+      const int wordRightX = drawX + wordWidth;
+      const int nextWordLeftX = xposArr[i + 1] + x;
+      const int gap = nextWordLeftX - wordRightX;
+      if (gap >= 8 && (currentStyle & (EpdFontFamily::SUP | EpdFontFamily::SUB)) == 0) {
+        const int dotX = wordRightX + gap / 2;
+        const int dotY = wordY + (wordAscender * 2) / 3;
+        const int dotSize = (wordAscender >= 16) ? 2 : 1;
+        renderer.fillRect(dotX, dotY, dotSize, dotSize, true);
+      }
     }
 
     if (EpdFontFamily::hasTextDecoration(currentStyle)) {

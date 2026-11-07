@@ -104,6 +104,10 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   emit(SettingInfo::Toggle(StrId::STR_FOCUS_READING, &CrossPointSettings::focusReadingEnabled, "focusReadingEnabled",
                            StrId::STR_CAT_READER)
            .withTextSettings());
+  emit(SettingInfo::Toggle(StrId::STR_GUIDE_DOTS, &CrossPointSettings::guideDotsEnabled, "guideDotsEnabled",
+                           StrId::STR_CAT_READER));
+  emit(SettingInfo::Toggle(StrId::STR_FORCE_PARAGRAPH_INDENT, &CrossPointSettings::forceParagraphIndent,
+                           "forceParagraphIndent", StrId::STR_CAT_READER));
   emit(SettingInfo::Toggle(StrId::STR_HYPHENATION, &CrossPointSettings::hyphenationEnabled, "hyphenationEnabled",
                            StrId::STR_CAT_READER)
            .withTextSettings());
@@ -229,11 +233,11 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                            "removeReadBooksFromRecents", StrId::STR_CAT_SYSTEM));
   emit(SettingInfo::Toggle(StrId::STR_MOVE_FINISHED_TO_READ, &CrossPointSettings::moveFinishedToReadFolder,
                            "moveFinishedToReadFolder", StrId::STR_CAT_SYSTEM));
-  emit(SettingInfo::Toggle(StrId::STR_TRACK_READING_STATS, &CrossPointSettings::trackReadingStats, "trackReadingStats",
-                           StrId::STR_CAT_SYSTEM));
   // The stored key keeps the heartbeat-era name on purpose: a device
   // whose owner turned that off must not come back on under a new key.
   emit(SettingInfo::Toggle(StrId::STR_DEVICE_REPORT, &CrossPointSettings::deviceReport, "heartbeat",
+                           StrId::STR_CAT_SYSTEM));
+  emit(SettingInfo::Toggle(StrId::STR_TRACK_READING_STATS, &CrossPointSettings::trackReadingStats, "trackReadingStats",
                            StrId::STR_CAT_SYSTEM));
   // Placed last by SettingsActivity, after the action rows, not by this
   // declaration order: it is the one setting that opens the device to

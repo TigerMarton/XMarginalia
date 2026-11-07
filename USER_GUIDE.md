@@ -337,6 +337,10 @@ Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **L
 
 - **Focus Reading**: Bolds the first part of each word to create visual fixation points, similar to Bionic Reading. This can help improve reading speed and focus; options are "ON" or "OFF" (default).
 
+- **Reading Guide Dots**: Displays subtle eye-pacing guide dots in inter-word gaps along the text baseline/midline, helping guide fixation during continuous reading; options are "ON" or "OFF" (default).
+
+- **Force Paragraph Indents**: Forces a first-line indent on all body paragraphs even for block-style EPUBs that use vertical margins without indentation; options are "ON" or "OFF" (default).
+
 #### 3.6.3 Controls
 
 - **Remap Front Buttons**: A menu for customising the function of each bottom edge button.
@@ -753,6 +757,7 @@ Available options include:
 - **Reading Orientation** – Cycle through screen orientations without leaving the reader.
 - **Auto Turn (Pages Per Minute)** – Cycle through automatic page turn speed options for hands-free reading.
 - **Reading Stats** – View reading statistics, session averages, daily streaks, reading pace, and time-of-day/day-of-week reading distribution. On devices with real-time clock hardware or after NTP sync, view and manually edit book start and completion dates.
+- **Customize for This Book / Reset to Global Defaults** – Toggle per-book formatting overrides. When custom formatting is enabled, changes made to font family, size, line spacing, margins, indents, hyphenation, guide dots, or focus reading apply only to the active book and are saved under its cache folder. Selecting "Reset to Global Defaults" restores the global reader settings for the book.
 - **Go to %** – Jump to a specific position in the book by percentage.
 - **Take screenshot** – Save a screenshot of the current page to the `screenshots/` folder.
 - **Show page as QR** – Display a QR code encoding the current reading position.

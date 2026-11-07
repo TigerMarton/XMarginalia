@@ -382,7 +382,7 @@ void NearbyBookTransferActivity::handleSenderPacket(const nearby::EspNowTranspor
   }
   if (packet.type == nearby::PacketType::Reject && s == State::WaitingForApproval) {
     setError(packet.payloadLength == 1 && packet.payload[0] == REJECT_STORAGE ? tr(STR_NEARBY_TRANSFER_NO_SPACE)
-                                                                               : tr(STR_NEARBY_TRANSFER_REJECTED));
+                                                                              : tr(STR_NEARBY_TRANSFER_REJECTED));
     return;
   }
   if (packet.type == nearby::PacketType::Ack && s == State::Sending && packet.payloadLength == 4) {

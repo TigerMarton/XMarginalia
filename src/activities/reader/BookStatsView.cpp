@@ -101,11 +101,11 @@ int noRtcCombinedContentHeight(const StatsLayout& layout, const int headerHeight
 }
 
 StatsLayout getNoRtcCombinedLayout(const GfxRenderer& renderer, const MappedInputManager* mappedInput,
-                                  const bool showButtonHints, const bool showAllDevices) {
+                                   const bool showButtonHints, const bool showAllDevices) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int buttonHintsHeight = showButtonHints ? metrics.buttonHintsHeight + kStatsButtonHintTopGap : 0;
-  const int availableHeight = renderer.getScreenHeight() - metrics.topPadding - metrics.verticalSpacing -
-                              buttonHintsHeight;
+  const int availableHeight =
+      renderer.getScreenHeight() - metrics.topPadding - metrics.verticalSpacing - buttonHintsHeight;
   StatsLayout layout = kDefaultLayout;
   const int defaultHeaderHeight = layout.headerHeight;
   if (noRtcCombinedContentHeight(layout, defaultHeaderHeight, showAllDevices) > availableHeight) {
@@ -123,7 +123,7 @@ int statsHeaderHeight(const ThemeMetrics&, const StatsLayout& layout, const Mapp
 }
 
 StatsLayout getStatsLayout(const GfxRenderer& renderer, const MappedInputManager* mappedInput,
-                          const bool isGlobalScreen, const bool showButtonHints, const bool showRtcStats) {
+                           const bool isGlobalScreen, const bool showButtonHints, const bool showRtcStats) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int availableHeight =
       renderer.getScreenHeight() - metrics.topPadding - statsBottomInset(metrics, showButtonHints);
@@ -440,8 +440,8 @@ void drawDateField(const GfxRenderer& renderer, const int x, const int y, const 
   drawCenteredLabel(renderer, UI_12_FONT_ID, x, w, y + 5, text);
 }
 
-void drawDateAdjustButton(GfxRenderer& renderer, const int x, const int y, const int size,
-                          const freeink::Icon& icon, const int touchTarget) {
+void drawDateAdjustButton(GfxRenderer& renderer, const int x, const int y, const int size, const freeink::Icon& icon,
+                          const int touchTarget) {
   TouchRegistry::getInstance().add(Rect(x, y, size, size), touchTarget, TouchRegistry::Item);
   renderer.drawRect(x, y, size, size, true);
   const freeink::ui::BitmapRef bitmap{icon.bits, icon.w, icon.h, freeink::ui::BitmapFormat::Mask1, true};
@@ -463,8 +463,8 @@ void renderPerBookStatsPage(GfxRenderer& renderer, const MappedInputManager* map
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto& layout = getStatsLayout(renderer, mappedInput, false, showButtonHints, showRtcStats);
   const int screenW = renderer.getScreenWidth();
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, screenW, layout.headerHeight},
-                 tr(STR_READING_STATS), nullptr, mappedInput && mappedInput->hasTouch());
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, screenW, layout.headerHeight}, tr(STR_READING_STATS), nullptr,
+                 mappedInput && mappedInput->hasTouch());
 
   const int cardX = metrics.contentSidePadding;
   const int cardW = screenW - metrics.contentSidePadding * 2;
@@ -515,9 +515,8 @@ void renderPerBookStatsPage(GfxRenderer& renderer, const MappedInputManager* map
   }
 
   if (showButtonHints && mappedInput) {
-    const auto labels =
-        mappedInput->mapLabels(tr(STR_BACK), showEditButton ? tr(STR_EDIT) : "", "",
-                               showMoreButton ? tr(STR_MORE) : "");
+    const auto labels = mappedInput->mapLabels(tr(STR_BACK), showEditButton ? tr(STR_EDIT) : "", "",
+                                               showMoreButton ? tr(STR_MORE) : "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }
   TouchRegistry::getInstance().publish();
@@ -531,8 +530,8 @@ void renderGlobalStatsPage(GfxRenderer& renderer, const MappedInputManager* mapp
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto& layout = getStatsLayout(renderer, mappedInput, true, showButtonHints, showRtcStats);
   const int screenW = renderer.getScreenWidth();
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, screenW, layout.headerHeight},
-                 screenTitle, nullptr, mappedInput && mappedInput->hasTouch());
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, screenW, layout.headerHeight}, screenTitle, nullptr,
+                 mappedInput && mappedInput->hasTouch());
 
   const int cardX = metrics.contentSidePadding;
   const int cardW = screenW - metrics.contentSidePadding * 2;
@@ -576,8 +575,7 @@ void renderGlobalStatsPage(GfxRenderer& renderer, const MappedInputManager* mapp
   }
 
   if (showButtonHints && mappedInput) {
-    const auto labels =
-        mappedInput->mapLabels(tr(STR_EXIT), "", tr(STR_BACK), showMoreButton ? tr(STR_MORE) : "");
+    const auto labels = mappedInput->mapLabels(tr(STR_EXIT), "", tr(STR_BACK), showMoreButton ? tr(STR_MORE) : "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }
   TouchRegistry::getInstance().publish();
@@ -593,8 +591,8 @@ void renderNoRtcCombinedStatsPage(GfxRenderer& renderer, const MappedInputManage
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto& layout = getNoRtcCombinedLayout(renderer, mappedInput, showButtonHints, allDevicesStats != nullptr);
   const int screenW = renderer.getScreenWidth();
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, screenW, layout.headerHeight},
-                 tr(STR_READING_STATS), nullptr, mappedInput && mappedInput->hasTouch());
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, screenW, layout.headerHeight}, tr(STR_READING_STATS), nullptr,
+                 mappedInput && mappedInput->hasTouch());
 
   const int cardX = metrics.contentSidePadding;
   const int cardW = screenW - metrics.contentSidePadding * 2;
@@ -640,8 +638,8 @@ void renderEditBookDatesPage(GfxRenderer& renderer, const MappedInputManager* ma
   TouchRegistry::getInstance().beginFrame();
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int pageWidth = renderer.getScreenWidth();
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, kDefaultLayout.headerHeight},
-                 tr(STR_READING_STATS), nullptr, mappedInput && mappedInput->hasTouch());
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, kDefaultLayout.headerHeight}, tr(STR_READING_STATS),
+                 nullptr, mappedInput && mappedInput->hasTouch());
 
   const int cardW = pageWidth - 120;
   const int cardH = 250;
@@ -728,8 +726,7 @@ void renderEditBookDatesPage(GfxRenderer& renderer, const MappedInputManager* ma
   }
 
   if (showButtonHints && mappedInput) {
-    const auto labels = mappedInput->mapLabels(tr(STR_BACK), tr(STR_NEXT_FIELD),
-                                               tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+    const auto labels = mappedInput->mapLabels(tr(STR_BACK), tr(STR_NEXT_FIELD), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }
   TouchRegistry::getInstance().publish();

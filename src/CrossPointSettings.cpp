@@ -16,6 +16,7 @@
 #include "ReaderFontSizes.h"
 #include "ReaderLineSpacing.h"
 #include "SettingsList.h"
+#include "activities/reader/BookSettings.h"
 #include "fontIds.h"
 #include "util/ParagraphIndentMigration.h"
 #include "util/PluginLocations.h"
@@ -337,23 +338,52 @@ CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {
   return spec;
 }
 
-ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWidth,
-                                                      const uint16_t viewportHeight) const {
+ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWidth, const uint16_t viewportHeight,
+                                                      const BookSettings* bookSettings) const {
   ReaderRenderSpec spec;
-  spec.fontId = getReaderFontId();
-  spec.lineCompression = getReaderLineCompression();
-  spec.characterSpacing = getCharacterSpacing();
-  spec.wordSpacingPercent = wordSpacing;
-  spec.extraParagraphSpacing = extraParagraphSpacing != 0;
-  spec.paragraphIndentSpaces = paragraphIndentSpaces;
-  spec.paragraphAlignment = paragraphAlignment;
-  spec.viewportWidth = viewportWidth;
-  spec.viewportHeight = viewportHeight;
-  spec.hyphenationEnabled = hyphenationEnabled != 0;
-  spec.embeddedStyle = embeddedStyle != 0;
-  // Same layout as Display, so switching between them keeps the section cache.
-  spec.imageRendering = imageRendering == IMAGES_DISPLAY_BW ? static_cast<uint8_t>(IMAGES_DISPLAY) : imageRendering;
-  spec.focusReadingEnabled = focusReadingEnabled != 0;
+  if (bookSettings && bookSettings->enabled) {
+    const char* sdFamily = bookSettings->effectiveSdFontFamilyName();
+    spec.fontId = getReaderFontIdFor(sdFamily, bookSettings->effectiveFontPointSize());
+    const uint8_t ls = bookSettings->effectiveLineSpacing();
+    spec.lineCompression = LINE_SPACING_MULTIPLIERS[ls < LINE_COMPRESSION_COUNT ? ls : LINE_SPACING_120];
+    spec.characterSpacing = getCharacterSpacing();
+    spec.wordSpacingPercent = wordSpacing;
+    const bool forceIndent = bookSettings->effectiveForceParagraphIndent();
+    if (forceIndent) {
+      spec.extraParagraphSpacing = false;
+      spec.paragraphIndentSpaces = std::max(bookSettings->effectiveParagraphIndentSpaces(), static_cast<uint8_t>(2));
+    } else {
+      spec.extraParagraphSpacing = extraParagraphSpacing != 0;
+      spec.paragraphIndentSpaces = bookSettings->effectiveParagraphIndentSpaces();
+    }
+    spec.paragraphAlignment = bookSettings->effectiveParagraphAlignment();
+    spec.viewportWidth = viewportWidth;
+    spec.viewportHeight = viewportHeight;
+    spec.hyphenationEnabled = bookSettings->effectiveHyphenation();
+    spec.embeddedStyle = embeddedStyle != 0;
+    spec.imageRendering = imageRendering == IMAGES_DISPLAY_BW ? static_cast<uint8_t>(IMAGES_DISPLAY) : imageRendering;
+    spec.focusReadingEnabled = bookSettings->effectiveFocusReading();
+  } else {
+    spec.fontId = getReaderFontId();
+    spec.lineCompression = getReaderLineCompression();
+    spec.characterSpacing = getCharacterSpacing();
+    spec.wordSpacingPercent = wordSpacing;
+    if (forceParagraphIndent) {
+      spec.extraParagraphSpacing = false;
+      spec.paragraphIndentSpaces = std::max(paragraphIndentSpaces, static_cast<uint8_t>(2));
+    } else {
+      spec.extraParagraphSpacing = extraParagraphSpacing != 0;
+      spec.paragraphIndentSpaces = paragraphIndentSpaces;
+    }
+    spec.paragraphAlignment = paragraphAlignment;
+    spec.viewportWidth = viewportWidth;
+    spec.viewportHeight = viewportHeight;
+    spec.hyphenationEnabled = hyphenationEnabled != 0;
+    spec.embeddedStyle = embeddedStyle != 0;
+    // Same layout as Display, so switching between them keeps the section cache.
+    spec.imageRendering = imageRendering == IMAGES_DISPLAY_BW ? static_cast<uint8_t>(IMAGES_DISPLAY) : imageRendering;
+    spec.focusReadingEnabled = focusReadingEnabled != 0;
+  }
   return spec;
 }
 
@@ -395,10 +425,10 @@ void CrossPointSettings::clearSdFontFamily() {
   saveToFile();
 }
 
-int CrossPointSettings::getReaderFontId() const {
+int CrossPointSettings::getReaderFontIdFor(const char* sdFamily, const uint8_t pointSize) const {
   // Check SD card font first
-  if (sdFontFamilyName[0] != '\0' && sdFontIdResolver) {
-    int id = sdFontIdResolver(sdFontResolverCtx, sdFontFamilyName, fontPointSize);
+  if (sdFamily && sdFamily[0] != '\0' && sdFontIdResolver) {
+    int id = sdFontIdResolver(sdFontResolverCtx, sdFamily, pointSize);
     if (id != 0) return id;
     // Fall through to built-in if SD font not found
   }
@@ -408,7 +438,7 @@ int CrossPointSettings::getReaderFontId() const {
   // normally persists the snap; snap again here (without allocating — this runs
   // in the page render loop) so rendering is correct even before it has run.
   const uint8_t pt =
-      snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES), fontPointSize);
+      snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES), pointSize);
   switch (pt) {
     case 12:
       return NOTOSANS_12_FONT_ID;
@@ -421,3 +451,5 @@ int CrossPointSettings::getReaderFontId() const {
       return NOTOSANS_14_FONT_ID;
   }
 }
+
+int CrossPointSettings::getReaderFontId() const { return getReaderFontIdFor(sdFontFamilyName, fontPointSize); }

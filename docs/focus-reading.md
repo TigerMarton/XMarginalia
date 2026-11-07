@@ -30,4 +30,4 @@ Toggling the setting invalidates affected EPUB section caches for the current la
 ## Notes
 
 - Focus Reading only applies to regular body text. Already-bold text (headings, emphasis) is left unchanged.
-- The setting is per-device, not per-book — it applies to all books while enabled.
+- The global setting in **Settings > Reader** applies across all books by default. When **Customize for This Book** is enabled from the Reader Menu, Focus Reading can also be toggled specifically for an individual book without altering other books.

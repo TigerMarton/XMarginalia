@@ -56,7 +56,7 @@ constexpr const char* HEADER_TAGS[] = {"h1", "h2", "h3", "h4", "h5", "h6"};
 constexpr const char* BLOCK_TAGS[] = {"p", "li", "div", "br", "blockquote", "ul", "ol", "pre", "figure"};
 constexpr const char* BOLD_TAGS[] = {"b", "strong"};
 constexpr const char* ITALIC_TAGS[] = {"i", "em"};
-constexpr const char* UNDERLINE_TAGS[] = {"u", "ins"};
+constexpr const char* UNDERLINE_TAGS[] = {"u", "ins", "mark"};
 constexpr const char* LINETHROUGH_TAGS[] = {"del", "s", "strike"};
 constexpr const char* IMAGE_TAGS[] = {"img", "image"};
 bool isWhitespace(const char c) { return c == ' ' || c == '\r' || c == '\n' || c == '\t'; }

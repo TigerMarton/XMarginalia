@@ -10,10 +10,11 @@ namespace {
 
 template <typename Predicate>
 void renderFilteredPageElements(const std::vector<std::unique_ptr<PageElement>>& elements, GfxRenderer& renderer,
-                                const int fontId, const int xOffset, const int yOffset, Predicate&& predicate) {
+                                const int fontId, const int xOffset, const int yOffset, Predicate&& predicate,
+                                const bool guideDots = false) {
   for (const auto& element : elements) {
     if (predicate(*element)) {
-      element->render(renderer, fontId, xOffset, yOffset);
+      element->render(renderer, fontId, xOffset, yOffset, guideDots);
     }
   }
 }
@@ -65,8 +66,9 @@ void drawBorderEdge(const GfxRenderer& renderer, const int x, const int y, const
 
 }  // namespace
 
-void PageLine::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) {
-  block->render(renderer, fontId, xPos + xOffset, yPos + yOffset);
+void PageLine::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset,
+                      const bool guideDots) {
+  block->render(renderer, fontId, xPos + xOffset, yPos + yOffset, guideDots);
 }
 
 bool PageLine::serialize(HalFile& file) {
@@ -97,7 +99,9 @@ std::unique_ptr<PageLine> PageLine::deserialize(HalFile& file) {
   return line;
 }
 
-void PageImage::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) {
+void PageImage::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset,
+                       const bool guideDots) {
+  (void)guideDots;
   // Images don't use fontId or text rendering
   imageBlock->render(renderer, xPos + xOffset, yPos + yOffset);
 }
@@ -133,8 +137,10 @@ std::unique_ptr<PageImage> PageImage::deserialize(HalFile& file) {
   return image;
 }
 
-void PageHorizontalRule::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) {
+void PageHorizontalRule::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset,
+                                const bool guideDots) {
   (void)fontId;
+  (void)guideDots;
   if (width == 0 || thickness == 0) {
     return;
   }
@@ -180,7 +186,9 @@ PageDropCap::PageDropCap(const int32_t fontId, const uint16_t scale256, const Ep
   strncpy(text, utf8, MAX_TEXT_BYTES);
 }
 
-void PageDropCap::render(GfxRenderer& renderer, const int sectionFontId, const int xOffset, const int yOffset) {
+void PageDropCap::render(GfxRenderer& renderer, const int sectionFontId, const int xOffset, const int yOffset,
+                         const bool guideDots) {
+  (void)guideDots;
   // A sized variant that can no longer be loaded draws from the section font instead.
   const int drawFontId = renderer.ensureFontLoaded(fontId) ? fontId : sectionFontId;
   int x = xPos + xOffset;
@@ -229,7 +237,9 @@ void PageBorderBox::renderBackground(GfxRenderer& renderer, const int xOffset, c
   if (shaded) renderer.fillRectDither(xPos + xOffset, yPos + yOffset, width, height, Color::LightGray);
 }
 
-void PageBorderBox::render(GfxRenderer& renderer, const int, const int xOffset, const int yOffset) {
+void PageBorderBox::render(GfxRenderer& renderer, const int, const int xOffset, const int yOffset,
+                           const bool guideDots) {
+  (void)guideDots;
   const int x = xPos + xOffset;
   const int y = yPos + yOffset;
   const CssBorderSide& top = sides[0];
@@ -287,11 +297,13 @@ std::unique_ptr<PageBorderBox> PageBorderBox::deserialize(HalFile& file) {
 }
 
 // Backgrounds precede every border, including borders inside shaded containers.
-void Page::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) const {
+void Page::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset,
+                  const bool guideDots) const {
   renderBoxBackgrounds(elements, renderer, xOffset, yOffset);
   renderFilteredPageElements(elements, renderer, fontId, xOffset, yOffset, isBorderBox);
-  renderFilteredPageElements(elements, renderer, fontId, xOffset, yOffset,
-                             [](const PageElement& element) { return !isBorderBox(element); });
+  renderFilteredPageElements(
+      elements, renderer, fontId, xOffset, yOffset, [](const PageElement& element) { return !isBorderBox(element); },
+      guideDots);
 }
 
 void Page::renderImages(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) const {
@@ -299,8 +311,8 @@ void Page::renderImages(GfxRenderer& renderer, const int fontId, const int xOffs
                              [](const PageElement& element) { return element.getTag() == TAG_PageImage; });
 }
 
-void Page::renderWithImagePlaceholders(GfxRenderer& renderer, const int fontId, const int xOffset,
-                                       const int yOffset) const {
+void Page::renderWithImagePlaceholders(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset,
+                                       const bool guideDots) const {
   renderBoxBackgrounds(elements, renderer, xOffset, yOffset);
   renderFilteredPageElements(elements, renderer, fontId, xOffset, yOffset, isBorderBox);
   for (const auto& element : elements) {
@@ -308,7 +320,7 @@ void Page::renderWithImagePlaceholders(GfxRenderer& renderer, const int fontId, 
     if (element->getTag() == TAG_PageImage) {
       static_cast<const PageImage&>(*element).renderPlaceholder(renderer, xOffset, yOffset);
     } else {
-      element->render(renderer, fontId, xOffset, yOffset);
+      element->render(renderer, fontId, xOffset, yOffset, guideDots);
     }
   }
 }

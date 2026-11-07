@@ -146,7 +146,7 @@ class TextBlock final : public Block {
   const std::vector<std::string>& getRubyTexts() const { return rubyTexts; }
   std::vector<LinkSpan> takeLinkSpans() { return std::move(linkSpans); }
 
-  void render(const GfxRenderer& renderer, int fontId, int x, int y) const;
+  void render(const GfxRenderer& renderer, int fontId, int x, int y, bool guideDots = false) const;
   BlockType getType() override { return TEXT_BLOCK; }
   bool serialize(HalFile& file) const;
   static std::unique_ptr<TextBlock> deserialize(HalFile& file);

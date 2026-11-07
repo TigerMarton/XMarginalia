@@ -36,7 +36,7 @@ class SdCardFontSystem {
   /// Ensure the correct SD font family is loaded for the current settings.
   /// Call before entering the reader or after settings change.
   /// Also re-discovers if the registry has been marked dirty (e.g. by web upload).
-  void ensureLoaded(GfxRenderer& renderer);
+  void ensureLoaded(GfxRenderer& renderer, const char* overrideFamily = nullptr, uint8_t overridePointSize = 0);
 
   /// Resolve an SD card font ID from family name + reader point size.
   /// Returns 0 if not found. Used by CrossPointSettings::getReaderFontId().
@@ -75,7 +75,8 @@ class SdCardFontSystem {
   // Load/refresh the selected TTF family at the current reader size, register
   // it with the renderer, and track it so ensureSdCardFontReady() rebuilds its
   // glyph set per page. registryWasDirty forces a reload even if unchanged.
-  void loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, bool registryWasDirty);
+  void loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, bool registryWasDirty,
+                     uint8_t pointSize = 0);
   // Unregister + free the active TTF font (and its UI-size fallbacks), if any.
   void unloadTtf(GfxRenderer& renderer);
   // Register the loaded TTF at each built-in UI size as a script fallback, so UI

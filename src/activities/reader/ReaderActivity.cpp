@@ -101,6 +101,8 @@ void ReaderActivity::onExit() {
   if (auto* fontCache = renderer.getFontCacheManager()) {
     fontCache->releaseSdFontCaches();
   }
+  // Restore global SD font selection if an active book had custom overrides.
+  sdFontSystem.ensureLoaded(renderer);
 
   LOG_INF("MEM", "reader exit: free=%u max_block=%u", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 

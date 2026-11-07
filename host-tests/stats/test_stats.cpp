@@ -6,13 +6,13 @@
 #include "../../src/activities/reader/ReadingStatsUtils.h"
 
 static int g_checks = 0;
-#define CHECK(cond)                                                      \
-  do {                                                                   \
-    g_checks++;                                                          \
-    if (!(cond)) {                                                       \
+#define CHECK(cond)                                                    \
+  do {                                                                 \
+    g_checks++;                                                        \
+    if (!(cond)) {                                                     \
       fprintf(stderr, "FAIL: %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-      return 1;                                                          \
-    }                                                                    \
+      return 1;                                                        \
+    }                                                                  \
   } while (0)
 
 int test_leap_year() {

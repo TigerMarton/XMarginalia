@@ -86,7 +86,8 @@ SettingsSection sectionFor(const SettingInfo& setting) {
 // here -- triviaShowUsCentric was in this list until card #311 and is now
 // category-less, so it never reaches a section at all.
 bool isForkGeneralSetting(const SettingInfo& setting) {
-  return setting.valuePtr == &CrossPointSettings::deviceReport || setting.valuePtr == &CrossPointSettings::devMode;
+  return setting.valuePtr == &CrossPointSettings::deviceReport || setting.valuePtr == &CrossPointSettings::devMode ||
+         setting.valuePtr == &CrossPointSettings::trackReadingStats;
 }
 
 // Device-only action rows added per section, beyond the shared list.
@@ -119,57 +120,54 @@ void SettingsActivity::rebuildSettings() {
       if (BoardConfig::hasHomeKey()) {
         settings.push_back(SettingInfo::Action(StrId::STR_HOME_BUTTON, SettingAction::HomeButton));
       }
-      for (auto& setting : all) {
-        if (sectionFor(setting) != section || !showOnDevice(setting)) continue;
-        if (setting.valuePtr == &CrossPointSettings::slideSwitchAction
+      for (auto& s : all) {
+        if (sectionFor(s) != section || !showOnDevice(s)) continue;
+        if (s.valuePtr == &CrossPointSettings::slideSwitchAction
 #if FREEINK_CAP_HAPTIC
-            || setting.valuePtr == &CrossPointSettings::vibration ||
-            setting.valuePtr == &CrossPointSettings::hapticIntensity
+            || s.valuePtr == &CrossPointSettings::vibration || s.valuePtr == &CrossPointSettings::hapticIntensity
 #endif
         ) {
-          settings.push_back(std::move(setting));
+          settings.push_back(std::move(s));
         }
       }
     } else if (activeSubmenu == SettingAction::ControlsPowerButton) {
-      for (auto& setting : all) {
-        if (sectionFor(setting) != section || !showOnDevice(setting)) continue;
-        if (setting.nameId == StrId::STR_SHORT_PWR_BTN || setting.valuePtr == &CrossPointSettings::pwrBtnFootnoteBack ||
-            setting.valuePtr == &CrossPointSettings::doubleClickPwrLight) {
-          settings.push_back(std::move(setting));
+      for (auto& s : all) {
+        if (sectionFor(s) != section || !showOnDevice(s)) continue;
+        if (s.nameId == StrId::STR_SHORT_PWR_BTN || s.valuePtr == &CrossPointSettings::pwrBtnFootnoteBack ||
+            s.valuePtr == &CrossPointSettings::doubleClickPwrLight) {
+          settings.push_back(std::move(s));
         }
       }
     } else if (activeSubmenu == SettingAction::ControlsSideButtons) {
-      for (auto& setting : all) {
-        if (sectionFor(setting) != section || !showOnDevice(setting)) continue;
-        if (setting.valuePtr == &CrossPointSettings::sideButtonLayout ||
-            setting.valuePtr == &CrossPointSettings::sideButtonLongPress ||
-            setting.valuePtr == &CrossPointSettings::sideButtonComboAction ||
-            setting.valuePtr == &CrossPointSettings::tiltPageTurn) {
-          settings.push_back(std::move(setting));
+      for (auto& s : all) {
+        if (sectionFor(s) != section || !showOnDevice(s)) continue;
+        if (s.valuePtr == &CrossPointSettings::sideButtonLayout ||
+            s.valuePtr == &CrossPointSettings::sideButtonLongPress ||
+            s.valuePtr == &CrossPointSettings::sideButtonComboAction ||
+            s.valuePtr == &CrossPointSettings::tiltPageTurn) {
+          settings.push_back(std::move(s));
         }
       }
     } else if (activeSubmenu == SettingAction::ControlsGestures) {
-      for (auto& setting : all) {
-        if (sectionFor(setting) != section || !showOnDevice(setting)) continue;
-        if (setting.valuePtr == &CrossPointSettings::touchReaderControls ||
-            setting.valuePtr == &CrossPointSettings::pageTurnGesture ||
-            setting.valuePtr == &CrossPointSettings::previousPageGesture ||
-            setting.valuePtr == &CrossPointSettings::showReaderMenu ||
-            setting.valuePtr == &CrossPointSettings::edgeGesturesEnabled ||
-            setting.valuePtr == &CrossPointSettings::edgeLeftAction ||
-            setting.valuePtr == &CrossPointSettings::edgeRightAction) {
-          settings.push_back(std::move(setting));
+      for (auto& s : all) {
+        if (sectionFor(s) != section || !showOnDevice(s)) continue;
+        if (s.valuePtr == &CrossPointSettings::touchReaderControls ||
+            s.valuePtr == &CrossPointSettings::pageTurnGesture ||
+            s.valuePtr == &CrossPointSettings::previousPageGesture ||
+            s.valuePtr == &CrossPointSettings::showReaderMenu ||
+            s.valuePtr == &CrossPointSettings::edgeGesturesEnabled ||
+            s.valuePtr == &CrossPointSettings::edgeLeftAction || s.valuePtr == &CrossPointSettings::edgeRightAction) {
+          settings.push_back(std::move(s));
         }
       }
     } else if (activeSubmenu == SettingAction::ControlsFrontButtons) {
       settings.push_back(SettingInfo::Action(StrId::STR_REMAP_FRONT_BUTTONS, SettingAction::RemapFrontButtons));
-      for (auto& setting : all) {
-        if (sectionFor(setting) != section || !showOnDevice(setting)) continue;
-        if (setting.valuePtr == &CrossPointSettings::frontButtonFollowOrientation ||
-            setting.valuePtr == &CrossPointSettings::backShortToFileBrowser ||
-            setting.valuePtr == &CrossPointSettings::longPressButtonBehavior ||
-            setting.nameId == StrId::STR_LONG_PRESS_MENU) {
-          settings.push_back(std::move(setting));
+      for (auto& s : all) {
+        if (sectionFor(s) != section || !showOnDevice(s)) continue;
+        if (s.valuePtr == &CrossPointSettings::frontButtonFollowOrientation ||
+            s.valuePtr == &CrossPointSettings::backShortToFileBrowser ||
+            s.valuePtr == &CrossPointSettings::longPressButtonBehavior || s.nameId == StrId::STR_LONG_PRESS_MENU) {
+          settings.push_back(std::move(s));
         }
       }
     }
