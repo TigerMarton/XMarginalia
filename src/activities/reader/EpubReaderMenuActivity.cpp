@@ -102,6 +102,9 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const 
   if (canSync) {
     items.push_back({MenuAction::SYNC, StrId::STR_SYNC_PROGRESS});
   }
+  if (SETTINGS.shouldTrackReadingStats()) {
+    items.push_back({MenuAction::READING_STATS, StrId::STR_READING_STATS});
+  }
   items.push_back({MenuAction::DELETE_CACHE, StrId::STR_DELETE_CACHE});
   items.push_back({MenuAction::TEXT_SETTINGS, StrId::STR_TEXT_SETTINGS});
 }

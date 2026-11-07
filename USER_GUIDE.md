@@ -365,6 +365,8 @@ Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **L
 
 #### 3.6.4 System
 
+- **Track Reading Stats** (**Settings → System**): Toggle reading statistics and streak tracking. When enabled (default), CrossPlay records reading sessions, active time, page turn pace, and daily reading streaks. Disabling tracking pauses automatic session logging and hides the Reading Stats menu entry, while live page pace and estimated finish times remain available.
+
 - **Time to Sleep** (**Settings → Display**): Set the duration of inactivity before the device automatically goes to sleep; options are 1, 3, 5, 10 (default), 15 or 30 minutes.
 
 - **Wi-Fi Networks**: Connect to Wi-Fi networks for file transfers and firmware updates.
@@ -725,6 +727,13 @@ CrossPlay renders text using the following Unicode character blocks, enabling su
 
 The UI includes Arabic and Hebrew (menus use built-in fonts with presentation-form coverage). Built-in **reader** fonts do not cover Chinese, Japanese, Korean, Arabic, Greek, Hebrew, or Farsi for book text. **CJK, Hebrew, Arabic, Greek, and other extended scripts can be enabled for reading by installing custom SD card fonts** — see [Custom Fonts (SD Card)](#38-custom-fonts-sd-card).
 
+### Reading Statistics and Streaks
+
+CrossPlay tracks your reading habits locally on your device:
+* **Per-Book Statistics:** Displays session count, total reading time, progress percentage, reading speed (pages per minute), average session duration, started date, finished date, and estimated completion date. On devices with real-time clock hardware or network time, reading distribution across time of day and days of the week is visualized with bar histograms.
+* **Editing Dates:** On devices with real-time clock hardware (such as the Onyx BOOX Picco) or after network time sync, select **Edit** (or press Confirm on the start date) to adjust or clear manual start and finished dates using touch chevrons or physical directional buttons.
+* **Global & Cross-Device Streaks:** Swipe or navigate to **This Device** and **All Devices** to view aggregate books completed, total reading time, and daily reading streaks over a rolling two-year window. Files synced across devices via `/.crosspoint/synced_stats/` automatically aggregate to give a complete view of your reading across all your e-readers.
+
 ---
 
 ## 5. Reader Menu
@@ -743,6 +752,7 @@ Available options include:
 - **View Clippings** – Open this book's saved clippings *(shown after the first clipping is saved)*.
 - **Reading Orientation** – Cycle through screen orientations without leaving the reader.
 - **Auto Turn (Pages Per Minute)** – Cycle through automatic page turn speed options for hands-free reading.
+- **Reading Stats** – View reading statistics, session averages, daily streaks, reading pace, and time-of-day/day-of-week reading distribution. On devices with real-time clock hardware or after NTP sync, view and manually edit book start and completion dates.
 - **Go to %** – Jump to a specific position in the book by percentage.
 - **Take screenshot** – Save a screenshot of the current page to the `screenshots/` folder.
 - **Show page as QR** – Display a QR code encoding the current reading position.

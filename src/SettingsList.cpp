@@ -229,6 +229,8 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                            "removeReadBooksFromRecents", StrId::STR_CAT_SYSTEM));
   emit(SettingInfo::Toggle(StrId::STR_MOVE_FINISHED_TO_READ, &CrossPointSettings::moveFinishedToReadFolder,
                            "moveFinishedToReadFolder", StrId::STR_CAT_SYSTEM));
+  emit(SettingInfo::Toggle(StrId::STR_TRACK_READING_STATS, &CrossPointSettings::trackReadingStats, "trackReadingStats",
+                           StrId::STR_CAT_SYSTEM));
   // The stored key keeps the heartbeat-era name on purpose: a device
   // whose owner turned that off must not come back on under a new key.
   emit(SettingInfo::Toggle(StrId::STR_DEVICE_REPORT, &CrossPointSettings::deviceReport, "heartbeat",

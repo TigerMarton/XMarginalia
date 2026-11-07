@@ -481,6 +481,13 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   bleturner::Config ble;
   // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
   uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
+  // Master switch for automatic reading statistics; Time Left pace remains independent.
+  uint8_t trackReadingStats = 1;
+  // Idle threshold for reading stats in seconds (defaults to 300 = 5 minutes).
+  uint16_t readingIdleTimeThresholdSeconds = 300;
+
+  bool shouldTrackReadingStats() const { return trackReadingStats != 0; }
+  uint16_t getReadingIdleTimeThresholdSeconds() const { return readingIdleTimeThresholdSeconds; }
 
   static constexpr uint8_t MIN_SLEEP_TIMEOUT_MINUTES = 1;
   static constexpr uint8_t SLEEP_TIMEOUT_NEVER_MINUTES = 31;

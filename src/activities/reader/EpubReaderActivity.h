@@ -10,14 +10,18 @@
 #include <optional>
 #include <vector>
 
+#include "BookReadingStats.h"
+#include "BookStatsTracking.h"
 #include "BookmarkEntry.h"
 #include "ChapterPosition.h"
 #include "ClipSelectionActivity.h"
 #include "EpubReaderMenuActivity.h"
+#include "GlobalReadingStats.h"
 #include "LinkNoteTitle.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
 #include "ReaderToolbarUi.h"
+#include "ReadingSessionStats.h"
 #include "components/OptionPopup.h"
 
 class EpubReaderActivity final : public ReaderActivity {
@@ -250,6 +254,27 @@ class EpubReaderActivity final : public ReaderActivity {
   unsigned long edgeOsdTime = 0;
   bool quickLocked = false;
 
+  BookReadingStats stats;
+  GlobalReadingStats globalStats;
+  bool statsTrackingActive = false;
+  bool bookStatsEnabled = true;
+  bool paceDirty = false;
+  bool pendingStatsCommit = false;
+  bool hasSessionStartLocalDateTime = false;
+  ReadingStatsDateTime sessionStartLocalDateTime;
+  uint32_t sessionReadingSeconds = 0;
+  unsigned long pageShownAtMs = 0;
+  uint16_t sessionPaceSampleCount = 0;
+  uint32_t sessionPaceSampleSeconds = 0;
+
+  void syncStatsTrackingState();
+  void recordCurrentPageReadingTime(const char* source);
+  void recordForwardPagePaceSample(uint32_t seconds, const char* source);
+  void commitReadingStatsSession();
+  void finalizeReadingStatsOnExit();
+  void openReadingStatsActivity();
+  float getCurrentBookProgressPercent() const;
+
   void openQuickActions();
   void handleEdgeGesture(MappedInputManager::EdgeGesture gesture, int deltaY);
 
@@ -259,6 +284,7 @@ class EpubReaderActivity final : public ReaderActivity {
       : ReaderActivity("EpubReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh) {}
   ~EpubReaderActivity() override;
 
+  void prepareForSleep() override;
   void loop() override;
   void render(RenderLock&& lock) override;
 
