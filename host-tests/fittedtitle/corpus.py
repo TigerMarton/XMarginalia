@@ -178,7 +178,7 @@ def bindings():
     theme_src = (REPO / "src/apps_local/ui/ToyboxTheme.h").read_text()
 
     data_of = dict(re.findall(r"^EpdFont\s+(\w+)\(&(\w+)\);", fonts_src, re.M))
-    font_of = dict(re.findall(r"^EpdFontFamily\s+(\w+)\(&(\w+)\);", fonts_src, re.M))
+    font_of = dict(re.findall(r"^EpdFontFamily\s+(\w+)\((?:\d+,\s*)?&(\w+)\);", fonts_src, re.M))
     ids = []
     for font_id, family in re.findall(r"insertFont\((k\w+),\s*(\w+)\)", fonts_src):
         ids.append((font_id, data_of[font_of[family]]))

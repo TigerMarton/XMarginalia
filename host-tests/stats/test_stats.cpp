@@ -144,6 +144,6 @@ int main() {
   if (test_streak_calculations() != 0) return 1;
   if (test_history_merge() != 0) return 1;
 
-  printf("PASS: All %d Reading Stats checks passed!\n", g_checks);
+  printf("%d checks, 0 failed\n", g_checks);
   return 0;
 }

@@ -1,6 +1,6 @@
 # CrossPlay User Guide
 
-Welcome to the **CrossPlay** firmware, a fork of CrossPoint for the Xteink X4 Pro and the Seeed reTerminal Sticky. This guide outlines the hardware controls, navigation, and reading features of the device.
+Welcome to the **CrossPlay** firmware, a fork of CrossPoint for the Xteink X4 Pro, the Seeed reTerminal Sticky, and the Onyx BOOX Picco. This guide outlines the hardware controls, navigation, and reading features of the device.
 
 - [CrossPlay User Guide](#crossplay-user-guide)
   - [1. Hardware Overview](#1-hardware-overview)
@@ -67,6 +67,7 @@ those four as buttons applies to the older X4.
 | Device                      | Buttons                                                                                                             |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | **Xteink X4 Pro**           | Two side keys (previous page / next page), **Power**, and a capacitive **Home** key below the panel                   |
+| **Onyx BOOX Picco**         | Touch-only panel, **Power** button on top; wake, sleep, and gesture-driven navigation                               |
 | **Seeed reTerminal Sticky** | The same two side keys, plus one **Confirm/Power** key: a click confirms, a hold sleeps                               |
 | **Xteink X4** (upstream)    | **Back**, **Confirm**, **Left**, **Right** on the bottom edge, plus **Power**, **Side Up**, **Side Down**, **Reset**   |
 
@@ -88,7 +89,7 @@ Alternatively, while reading a book, open the reader menu and select **Take scre
 
 ### Control Center and Frontlight
 
-The Control Center is available on all touch devices. Devices with a frontlight also show light controls. The X4 Pro has adjustable brightness and warmth; the Paper Mono has adjustable brightness only.
+The Control Center is available on all touch devices. Devices with a frontlight also show light controls. The X4 Pro and the Onyx BOOX Picco have adjustable brightness and warmth (dual-channel cool/warm frontlight); the Paper Mono has adjustable brightness only.
 
 * **Open the panel:** Swipe down from the top edge of the screen, from almost any screen (Home, Browse Files, Reading Mode, etc.). You can also tap the status bar on Home, Browse Files, or Settings. On devices with a frontlight, drag the brightness slider (and the warmth slider, where available) to adjust the light live, or tap the sun icon to turn it on or off.
 * **Quick controls:** The panel has one row of icons: moon for night mode, circular arrows to refresh the screen, an underlined **T** to cycle reading direction, and the Settings Controls pointer to toggle reader touch controls. On builds with Bluetooth support, a fifth button enables or disables the Bluetooth page turner. Its crossed-out icon means disabled. The **T** rotates with the selected direction. A filled toggle means enabled; an outlined toggle means disabled. Refresh and direction always have outlines. Turning reader touch controls off leaves the panel usable. Bluetooth reconnection follows the normal rules after you close the panel; enabling it does not pair a new remote.
@@ -151,8 +152,7 @@ The Browse Files screen acts as a file and folder browser. The full path to the 
 
 * **Navigate List:** Use **Left** (or **Side Up**), or **Right** (or **Side Down**) to move the selection cursor up and down through folders and books. You can also long-press these buttons to scroll a full page up or down.
 * **Open Selection:** Press **Confirm** to open a folder or start reading a selected book. Selecting a `.bmp` file will open the image viewer.
-* **Delete Files or Folders:** Hold and release **Confirm** to delete the selected file or folder. You will be given an option to either confirm or cancel. Multiple files can be selected for deletion in a single operation.
-* **Rename or Move:** Files can be renamed or moved to a different folder from within the browse screen.
+* **Delete, Rename, Move, or Send:** Hold and release **Confirm** (or long-press the file row on touch devices) to open the file actions menu. This menu allows deleting, renaming, moving, or selecting **Send to Nearby Device** to transmit the book directly over ad-hoc Wi-Fi to a receiving CrossInk or CrossPlay reader.
 
 ### 3.4 Library Screen
 
@@ -177,7 +177,9 @@ The index is created automatically the first time the Library is opened. To pick
 
 ### 3.5 File Transfer Screen
 
-The File Transfer screen allows you to upload and manage files on the device. When you enter the screen, choose **Join a Network**, **Calibre Wireless**, or **Create Hotspot**. The reader then starts the web server for the selected mode.
+The File Transfer screen allows you to upload and manage files on the device. When you enter the screen, choose **Join a Network**, **Calibre Wireless**, **Create Hotspot**, or **Receive Nearby File**. The reader then starts the web server or ad-hoc listener for the selected mode.
+
+- **Receive Nearby File**: Enables ad-hoc peer-to-peer Wi-Fi file transfer using the CrossInk protocol without requiring a local router or external network. Places the device in direct softAP/TCP listener mode to receive EPUBs directly from another CrossInk or CrossPlay reader.
 
 See the [web server docs](./docs/webserver.md) for more information on how to connect to the web server and upload files.
 
@@ -265,14 +267,13 @@ Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **L
 
 - **Quick Resume on Timeout**: Whether to enable the "Quick Resume" sleep screen when the device goes to sleep due to inactivity (Display > Time to Sleep). This is useful for quickly resuming reading without waiting for the device to fully wake up and load the book. This overwrites the Sleep Screen Cover Mode when enabled.
 
-- **Status Bar**: Configure the status bar displayed while reading:
+- **Status Bar**: Configure the modular status bar displayed while reading. Each slot can be configured independently across top and bottom lanes:
   
-  - "None" - No status bar
-  - "No Progress" - Show status bar without reading progress
-  - "Full w/ Percentage" - Show status bar with book progress (as percentage)
-  - "Full w/ Book Bar" - Show status bar with book progress (as bar)
-  - "Book Bar Only" - Show book progress (as bar)
-  - "Full w/ Chapter Bar" - Show status bar with chapter progress (as bar)
+  - **Slots**: Top Left, Top Center, Top Right, Bottom Left, Bottom Center, Bottom Right
+  - **Slot Items**: None, Book Title, Chapter Title, Chapter Page, Book Page, Book %, Page & %, Battery, Clock, Time Left (Chapter), Time Left (Book)
+  - **Progress Bar**: Off, Book Progress, or Chapter Progress
+  - **Progress Bar Position**: Bottom or Top
+  - **Progress Bar Thickness**: Thin, Normal, or Thick
 
 - **Hide Battery %**: Configure where to suppress the battery percentage display in the status bar; the battery icon will still be shown:
   
@@ -288,6 +289,9 @@ Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **L
   - "Lyra" - The new theme for Crosspoint featuring rounded elements and menu icons
   - "Lyra Extended" - Lyra, but displays 3 books instead of 1 on the **[Home Screen](#31-home-screen)**
   - "RoundedRaff" - A rounded theme with additional visual styling
+  - "Cover Grid" - Dynamic multi-cover visual grid (boards with PSRAM)
+  - "Dashboard" - Modern card layout showcasing your reading streak, daily hours, completed books, and current read
+  - "Minimal" - Fast, compact text-centric layout without cover decoding for maximal battery and instant home navigation
 
 - **Sunlight Fading Fix**: Configure whether to enable a software-fix for the issue where white X4 models may fade when used in direct sunlight:
   
@@ -623,10 +627,18 @@ When using **Custom**, **Cover**, **Cover + Custom** or **Cover + Transparent**,
 
 To use custom sleep images, set the sleep screen mode to **Custom** or **Cover + Custom**, then place images on the SD card:
 
-- **Multiple Images (recommended):** Create a `.sleep` directory in the root of the SD card and place any number of `.bmp` images inside. One will be randomly selected each time the device sleeps. (A directory named `sleep` is also accepted as a fallback.)
-- **Single Image:** Place a file named `sleep.bmp` in the root directory. This takes priority over the `.sleep`/`sleep` directories.
+- **Multiple Images (recommended):** Create a `/sleepscreen` directory (or `.sleep` / `sleep`) in the root of the SD card and place any number of `.bmp` images inside. One will be randomly selected each time the device sleeps.
+- **Single Image:** Place a file named `sleep.bmp` in the root directory. This takes priority over the sleep rotation directories.
 
 Like book covers, custom images are scaled to the screen using **Sleep Screen Cover Mode**. The first sleep with a new image takes longer while it is converted.
+
+#### Custom boot screen
+
+You can customize the device startup screen with your own image:
+
+- Place a file named `bootscreen.bmp` (or `boot.bmp`) in the root directory of the SD card.
+- The image will be displayed on startup instead of the default logo.
+- You can also set any image as the boot screen directly from the image viewer in **Browse Files**.
 
 #### Transparent overlay images
 
@@ -645,7 +657,10 @@ Transparent overlay files are intentionally separate from normal sleep images. R
 > - X3: Use a resolution of 528x792 pixels to match the device's screen resolution.
 
 > [!TIP]
-> You can set an image as the sleep screen cover directly from the BMP image viewer in the **[Browse Files](#33-browse-files-screen)** screen. On touch devices, long-press the image.
+> From the image viewer in **[Browse Files](#33-browse-files-screen)**, press Confirm (or long-press the screen on touch devices) to open the action menu:
+> - **Set as Sleep Cover**: Sets the image as the single `/custom_sleep.bmp`.
+> - **Add to Sleep Rotation**: Copies the image to `/sleepscreen/` for random rotation on each sleep.
+> - **Set as Boot Screen**: Sets the image as `/bootscreen.bmp` to display on device boot.
 
 ---
 

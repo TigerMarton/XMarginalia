@@ -1789,19 +1789,20 @@ void EpubReaderActivity::renderBook() {
   renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
                                    &orientedMarginLeft);
   const uint8_t effectiveMargin = bookSettings.effectiveScreenMargin();
-  orientedMarginTop += effectiveMargin;
+  const uint8_t topBarHeight = static_cast<uint8_t>(UITheme::getInstance().getTopStatusBarHeight());
+  const uint8_t bottomBarHeight = static_cast<uint8_t>(UITheme::getInstance().getBottomStatusBarHeight());
+
+  orientedMarginTop += (topBarHeight > 0 ? (topBarHeight + effectiveMargin) : effectiveMargin);
   orientedMarginLeft += effectiveMargin;
   orientedMarginRight += effectiveMargin;
 
-  const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
-
   if (automaticPageTurnActive &&
-      (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight())) {
+      (bottomBarHeight == 0 || bottomBarHeight == UITheme::getInstance().getProgressBarHeight())) {
     orientedMarginBottom +=
         std::max(effectiveMargin,
-                 static_cast<uint8_t>(statusBarHeight + UITheme::getInstance().getMetrics().statusBarVerticalMargin));
+                 static_cast<uint8_t>(bottomBarHeight + UITheme::getInstance().getMetrics().statusBarVerticalMargin));
   } else {
-    orientedMarginBottom += std::max(effectiveMargin, statusBarHeight);
+    orientedMarginBottom += std::max(effectiveMargin, bottomBarHeight);
   }
 
   const uint16_t viewportWidth = renderer.getScreenWidth() - orientedMarginLeft - orientedMarginRight;
@@ -2612,37 +2613,68 @@ void EpubReaderActivity::renderStatusBar() const {
   int textYOffset = 0;
   const auto sb = SETTINGS.statusBarSpec();
 
+  std::string overrideNotificationTitle;
   const auto note = linkNoteTitle.draw(sb.showsTitle(), bleturner::linkNote());
   if (note == bleturner::LinkNote::Connected) {
     const auto peer = bleturner::linked();
     char connected[64];
     snprintf(connected, sizeof(connected), tr(STR_BT_CONNECTED_TO), peer.name[0] != '\0' ? peer.name : peer.addr);
-    title = connected;
+    overrideNotificationTitle = connected;
   } else if (note == bleturner::LinkNote::LowMemory) {
-    title = tr(STR_BT_LOW_MEMORY);
+    overrideNotificationTitle = tr(STR_BT_LOW_MEMORY);
   } else if (note != bleturner::LinkNote::None) {
-    title = note == bleturner::LinkNote::Connecting ? tr(STR_BT_CONNECTING) : tr(STR_BT_FAILED);
+    overrideNotificationTitle = note == bleturner::LinkNote::Connecting ? tr(STR_BT_CONNECTING) : tr(STR_BT_FAILED);
   } else if (automaticPageTurnActive) {
-    title = tr(STR_AUTO_TURN_ENABLED) + std::to_string(60 * 1000 / pageTurnDuration);
+    overrideNotificationTitle = tr(STR_AUTO_TURN_ENABLED) + std::to_string(60 * 1000 / pageTurnDuration);
     const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
     if (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight()) {
       textYOffset += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
     }
-  } else if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE) {
-    title = tr(STR_UNNAMED);
-    if (epub) {
-      const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
-      if (tocIndex != -1) {
-        const auto tocItem = epub->getTocItem(tocIndex);
-        title = tocItem.title;
-      }
-    }
-  } else if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
-    title = epub ? epub->getTitle() : "";
   }
 
-  GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true, currentPageBookmarked,
-                    section ? section->isBuilding() : false);
+  int timeToChapterMin = -1;
+  int timeToBookMin = -1;
+  if (stats.avgSecondsPerForwardPage > 0 && static_cast<int>(pageCount) > currentPage) {
+    timeToChapterMin =
+        static_cast<int>(((static_cast<int>(pageCount) - currentPage) * stats.avgSecondsPerForwardPage + 59) / 60);
+  }
+  if (stats.estimatedTimeLeftSeconds > 0) {
+    timeToBookMin = static_cast<int>((stats.estimatedTimeLeftSeconds + 59) / 60);
+  }
+
+  BaseTheme::StatusBarContext ctx;
+  ctx.bookProgress = bookProgress;
+  ctx.currentPage = currentPage;
+  ctx.pageCount = static_cast<int>(pageCount);
+  std::string chapterTitleStr;
+  if (sb.showsChapterTitle() && epub) {
+    const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
+    if (tocIndex != -1) {
+      chapterTitleStr = epub->getTocItem(tocIndex).title;
+    }
+    if (chapterTitleStr.empty()) {
+      chapterTitleStr = tr(STR_UNNAMED);
+    }
+  }
+  std::string bookTitleStr;
+  if (sb.showsBookTitle() && epub) {
+    bookTitleStr = epub->getTitle();
+  }
+  if (!overrideNotificationTitle.empty()) {
+    ctx.chapterTitle = overrideNotificationTitle.c_str();
+    ctx.bookTitle = overrideNotificationTitle.c_str();
+  } else {
+    ctx.chapterTitle = chapterTitleStr.c_str();
+    ctx.bookTitle = bookTitleStr.c_str();
+  }
+  ctx.timeToChapterMin = timeToChapterMin;
+  ctx.timeToBookMin = timeToBookMin;
+  ctx.isPageBookmarked = currentPageBookmarked;
+  ctx.pageCountEstimated = section ? section->isBuilding() : false;
+  ctx.textYOffset = textYOffset;
+  ctx.fillMargin = true;
+
+  GUI.drawModularStatusBar(renderer, ctx);
 }
 
 // ---------------------------------------------------------------------------

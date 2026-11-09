@@ -109,6 +109,7 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
       [&](freeink::SecureHttpClient& http, const bool sameOrigin) {
         answeredBySameOrigin = sameOrigin;
         applyCommonClientSetup(http);
+        http.addHeader("Accept-Encoding", "identity");
         // Credentials and caller headers stay with the starting origin; a
         // redirect elsewhere (or to plain http) gets neither.
         if (sameOrigin) {
@@ -207,6 +208,7 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
     }
     if (!options.accept.empty()) http.addHeader("Accept", options.accept);
     if (!options.acceptLanguage.empty()) http.addHeader("Accept-Language", options.acceptLanguage);
+    http.addHeader("Accept-Encoding", "identity");
 
     LOG_DBG("HTTP", "wolfSSL GET: %s", current.c_str());
     status = http.GET([&](const uint8_t* data, size_t len) {

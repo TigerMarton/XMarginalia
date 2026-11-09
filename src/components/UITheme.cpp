@@ -14,8 +14,10 @@
 #include "RecentBooksStore.h"
 #include "components/CoverGridHomeUi.h"
 #include "components/themes/BaseTheme.h"
+#include "components/themes/dashboard/DashboardTheme.h"
 #include "components/themes/lyra/Lyra3CoversTheme.h"
 #include "components/themes/lyra/LyraTheme.h"
+#include "components/themes/minimal/MinimalTheme.h"
 #include "components/themes/roundedraff/RoundedRaffTheme.h"
 
 UITheme UITheme::instance;
@@ -67,6 +69,30 @@ void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
       LOG_DBG("UI", "Using Lyra 3 Covers theme");
       currentTheme = std::make_unique<Lyra3CoversTheme>();
       currentMetrics = &Lyra3CoversMetrics::values;
+      break;
+    case CrossPointSettings::UI_THEME::MINIMAL: {
+      auto theme = makeUniqueNoThrow<MinimalTheme>();
+      if (!theme) {
+        LOG_ERR("UI", "OOM: Minimal theme");
+        return;
+      }
+      currentTheme = std::move(theme);
+      currentMetrics = &MinimalMetrics::values;
+      LOG_DBG("UI", "Using Minimal theme");
+      break;
+    }
+    case CrossPointSettings::UI_THEME::DASHBOARD: {
+      auto theme = makeUniqueNoThrow<DashboardTheme>();
+      if (!theme) {
+        LOG_ERR("UI", "OOM: Dashboard theme");
+        return;
+      }
+      currentTheme = std::move(theme);
+      currentMetrics = &DashboardMetrics::values;
+      LOG_DBG("UI", "Using Dashboard theme");
+      break;
+    }
+    default:
       break;
   }
   metricsValid = false;
@@ -162,15 +188,29 @@ UIIcon UITheme::getFileIcon(const std::string& filename) {
   return File;
 }
 
-int UITheme::getStatusBarHeight() {
+int UITheme::getTopStatusBarHeight() {
   const ThemeMetrics metrics = UITheme::getInstance().getMetrics();
   const auto sb = SETTINGS.statusBarSpec();
-
-  // Layout reservation is hardware-agnostic: pass clockAvailable=true so the
-  // reserved height does not depend on whether an RTC is present.
-  return (sb.textLaneVisible(true) ? (metrics.statusBarVerticalMargin) : 0) +
-         (sb.showsProgressBar() ? (sb.progressBarHeightPx + metrics.progressBarMarginTop) : 0);
+  const bool hasText = sb.hasTopTextLane();
+  const bool hasProgress =
+      sb.showsProgressBar() && sb.progressBarPosition == CrossPointSettings::STATUS_BAR_PROGRESS_POS_TOP;
+  if (!hasText && !hasProgress) return 0;
+  return (hasText ? metrics.statusBarVerticalMargin : 0) +
+         (hasProgress ? (sb.progressBarHeightPx + metrics.progressBarMarginTop) : 0);
 }
+
+int UITheme::getBottomStatusBarHeight() {
+  const ThemeMetrics metrics = UITheme::getInstance().getMetrics();
+  const auto sb = SETTINGS.statusBarSpec();
+  const bool hasText = sb.hasBottomTextLane();
+  const bool hasProgress =
+      sb.showsProgressBar() && sb.progressBarPosition == CrossPointSettings::STATUS_BAR_PROGRESS_POS_BOTTOM;
+  if (!hasText && !hasProgress) return 0;
+  return (hasText ? metrics.statusBarVerticalMargin : 0) +
+         (hasProgress ? (sb.progressBarHeightPx + metrics.progressBarMarginTop) : 0);
+}
+
+int UITheme::getStatusBarHeight() { return getBottomStatusBarHeight(); }
 
 int UITheme::getProgressBarHeight() {
   const ThemeMetrics metrics = UITheme::getInstance().getMetrics();

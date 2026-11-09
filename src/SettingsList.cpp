@@ -390,6 +390,46 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   emit(SettingInfo::Enum(StrId::STR_XTC_STATUS_BAR, &CrossPointSettings::xtcStatusBarMode,
                          {StrId::STR_HIDE, StrId::STR_BOTTOM, StrId::STR_TOP}, "xtcStatusBarMode",
                          StrId::STR_CUSTOMISE_STATUS_BAR));
+
+  static constexpr StrId STATUS_BAR_SLOT_NAMES[] = {
+      StrId::STR_SLOT_NONE,
+      StrId::STR_SLOT_BOOK_TITLE,
+      StrId::STR_SLOT_CHAPTER_TITLE,
+      StrId::STR_SLOT_CHAPTER_PAGE,
+      StrId::STR_SLOT_BOOK_PAGE,
+      StrId::STR_SLOT_BOOK_PERCENT,
+      StrId::STR_SLOT_PAGE_AND_PERCENT,
+      StrId::STR_SLOT_BATTERY,
+      StrId::STR_SLOT_CLOCK,
+      StrId::STR_SLOT_TIME_LEFT_CHAPTER,
+      StrId::STR_SLOT_TIME_LEFT_BOOK,
+  };
+  emit(SettingInfo::Enum(StrId::STR_TOP_BAR_LEFT, &CrossPointSettings::statusBarTopLeft,
+                         {STATUS_BAR_SLOT_NAMES, STATUS_BAR_SLOT_NAMES + std::size(STATUS_BAR_SLOT_NAMES)},
+                         "statusBarTopLeft", StrId::STR_CUSTOMISE_STATUS_BAR));
+  emit(SettingInfo::Enum(StrId::STR_TOP_BAR_CENTER, &CrossPointSettings::statusBarTopCenter,
+                         {STATUS_BAR_SLOT_NAMES, STATUS_BAR_SLOT_NAMES + std::size(STATUS_BAR_SLOT_NAMES)},
+                         "statusBarTopCenter", StrId::STR_CUSTOMISE_STATUS_BAR));
+  emit(SettingInfo::Enum(StrId::STR_TOP_BAR_RIGHT, &CrossPointSettings::statusBarTopRight,
+                         {STATUS_BAR_SLOT_NAMES, STATUS_BAR_SLOT_NAMES + std::size(STATUS_BAR_SLOT_NAMES)},
+                         "statusBarTopRight", StrId::STR_CUSTOMISE_STATUS_BAR));
+  emit(SettingInfo::Enum(StrId::STR_BOTTOM_BAR_LEFT, &CrossPointSettings::statusBarBottomLeft,
+                         {STATUS_BAR_SLOT_NAMES, STATUS_BAR_SLOT_NAMES + std::size(STATUS_BAR_SLOT_NAMES)},
+                         "statusBarBottomLeft", StrId::STR_CUSTOMISE_STATUS_BAR));
+  emit(SettingInfo::Enum(StrId::STR_BOTTOM_BAR_CENTER, &CrossPointSettings::statusBarBottomCenter,
+                         {STATUS_BAR_SLOT_NAMES, STATUS_BAR_SLOT_NAMES + std::size(STATUS_BAR_SLOT_NAMES)},
+                         "statusBarBottomCenter", StrId::STR_CUSTOMISE_STATUS_BAR));
+  emit(SettingInfo::Enum(StrId::STR_BOTTOM_BAR_RIGHT, &CrossPointSettings::statusBarBottomRight,
+                         {STATUS_BAR_SLOT_NAMES, STATUS_BAR_SLOT_NAMES + std::size(STATUS_BAR_SLOT_NAMES)},
+                         "statusBarBottomRight", StrId::STR_CUSTOMISE_STATUS_BAR));
+
+  static constexpr StrId STATUS_BAR_POSITION_NAMES[] = {
+      StrId::STR_BOTTOM,
+      StrId::STR_TOP,
+  };
+  emit(SettingInfo::Enum(StrId::STR_PROGRESS_BAR_POSITION, &CrossPointSettings::statusBarProgressBarPosition,
+                         {STATUS_BAR_POSITION_NAMES, STATUS_BAR_POSITION_NAMES + std::size(STATUS_BAR_POSITION_NAMES)},
+                         "statusBarProgressBarPosition", StrId::STR_CUSTOMISE_STATUS_BAR));
   // Clock entries (persistence + web settings; the device UI is
   // ClockSettingsActivity under System settings).
   emit(SettingInfo::StaticEnum(StrId::STR_CLOCK, &CrossPointSettings::statusBarClock, STATUS_BAR_CLOCK_VALUES,

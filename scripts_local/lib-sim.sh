@@ -138,7 +138,7 @@ build() {
 write_site_shot() {
   local src="$1" dest="$2"
   [ -f "$src" ] || { echo "no capture at $src" >&2; return 1; }
-  uv run --quiet --with pillow python - "$src" "$dest" <<'PY'
+  /usr/bin/python3 - "$src" "$dest" <<'PY'
 import sys
 from PIL import Image
 src, dest = sys.argv[1], sys.argv[2]
@@ -158,7 +158,7 @@ PY
 bmp_to_png() {
   local dir="$1"
   compgen -G "$dir/*.bmp" >/dev/null || return 0
-  uv run --quiet --with pillow python - "$dir" <<'PY'
+  /usr/bin/python3 - "$dir" <<'PY'
 import pathlib, sys
 from PIL import Image
 for bmp in sorted(pathlib.Path(sys.argv[1]).glob("*.bmp")):

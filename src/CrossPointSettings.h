@@ -238,7 +238,39 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   };
 
   // UI Theme
-  enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3, COVER_GRID = 4 };
+  enum UI_THEME {
+    CLASSIC = 0,
+    LYRA = 1,
+    LYRA_3_COVERS = 2,
+    ROUNDEDRAFF = 3,
+    COVER_GRID = 4,
+    DASHBOARD = 5,
+    MINIMAL = 6,
+    UI_THEME_COUNT
+  };
+
+  // Status bar modular slot items
+  enum STATUS_BAR_SLOT_ITEM : uint8_t {
+    STATUS_BAR_SLOT_NONE = 0,
+    STATUS_BAR_SLOT_BOOK_TITLE = 1,
+    STATUS_BAR_SLOT_CHAPTER_TITLE = 2,
+    STATUS_BAR_SLOT_CHAPTER_PAGE = 3,
+    STATUS_BAR_SLOT_BOOK_PAGE = 4,
+    STATUS_BAR_SLOT_BOOK_PERCENT = 5,
+    STATUS_BAR_SLOT_PAGE_AND_PERCENT = 6,
+    STATUS_BAR_SLOT_BATTERY = 7,
+    STATUS_BAR_SLOT_CLOCK = 8,
+    STATUS_BAR_SLOT_TIME_LEFT_CHAPTER = 9,
+    STATUS_BAR_SLOT_TIME_LEFT_BOOK = 10,
+    STATUS_BAR_SLOT_ITEM_COUNT
+  };
+
+  // Status bar progress bar position
+  enum STATUS_BAR_PROGRESS_POSITION : uint8_t {
+    STATUS_BAR_PROGRESS_POS_BOTTOM = 0,
+    STATUS_BAR_PROGRESS_POS_TOP = 1,
+    STATUS_BAR_PROGRESS_POS_COUNT
+  };
 
   // Image rendering in EPUB reader. IMAGES_DISPLAY_BW lays images out like
   // IMAGES_DISPLAY but draws them as a B/W dither, so image pages skip the
@@ -305,6 +337,14 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t xtcStatusBarMode = XTC_STATUS_BAR_HIDE;
   // Clock display in status bar (any board whose RTC probe succeeds)
   uint8_t statusBarClock = STATUS_BAR_CLOCK_HIDE;
+  // Modular status bar slot configurations
+  uint8_t statusBarTopLeft = STATUS_BAR_SLOT_NONE;
+  uint8_t statusBarTopCenter = STATUS_BAR_SLOT_NONE;
+  uint8_t statusBarTopRight = STATUS_BAR_SLOT_NONE;
+  uint8_t statusBarBottomLeft = STATUS_BAR_SLOT_BATTERY;
+  uint8_t statusBarBottomCenter = STATUS_BAR_SLOT_CHAPTER_TITLE;
+  uint8_t statusBarBottomRight = STATUS_BAR_SLOT_PAGE_AND_PERCENT;
+  uint8_t statusBarProgressBarPosition = STATUS_BAR_PROGRESS_POS_BOTTOM;
   // LEGACY, kept for migration only: quarter-hour UTC offset biased by 48
   // (48 = UTC+0). Superseded by clockTimezone; read once by
   // timezones::activeIndex() when clockTimezone is unset.
@@ -527,25 +567,65 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // refresh. Locking here would instead put a mutex on the render path and
   // stall it behind the SD write inside saveToFile(). Don't add one back.
   struct StatusBarSpec {
+    uint8_t topLeft = STATUS_BAR_SLOT_NONE;
+    uint8_t topCenter = STATUS_BAR_SLOT_NONE;
+    uint8_t topRight = STATUS_BAR_SLOT_NONE;
+    uint8_t bottomLeft = STATUS_BAR_SLOT_BATTERY;
+    uint8_t bottomCenter = STATUS_BAR_SLOT_CHAPTER_TITLE;
+    uint8_t bottomRight = STATUS_BAR_SLOT_PAGE_AND_PERCENT;
+
+    uint8_t progressBarMode = HIDE_PROGRESS;  // STATUS_BAR_PROGRESS_BAR
+    uint8_t progressBarPosition = STATUS_BAR_PROGRESS_POS_BOTTOM;
+    uint8_t progressBarHeightPx = 0;  // (thickness+1)*2; 0 when the bar is hidden
+
+    bool showBatteryPercent = false;
+    bool clock12h = false;
+    uint8_t xtcMode = XTC_STATUS_BAR_HIDE;  // XTC_STATUS_BAR_MODE
+
+    // Legacy fields maintained for backwards compatibility
     bool showChapterPageCount = false;
     bool showBookProgressPercent = false;
     uint8_t titleMode = HIDE_TITLE;  // STATUS_BAR_TITLE
     bool showBattery = false;
-    bool showBatteryPercent = false;
     uint8_t clockMode = STATUS_BAR_CLOCK_HIDE;  // STATUS_BAR_CLOCK_MODE
-    bool clock12h = false;
-    uint8_t progressBarMode = HIDE_PROGRESS;  // STATUS_BAR_PROGRESS_BAR
-    uint8_t progressBarHeightPx = 0;          // (thickness+1)*2; 0 when the bar is hidden
-    uint8_t xtcMode = XTC_STATUS_BAR_HIDE;    // XTC_STATUS_BAR_MODE
 
+    bool hasTopTextLane() const {
+      return topLeft != STATUS_BAR_SLOT_NONE || topCenter != STATUS_BAR_SLOT_NONE || topRight != STATUS_BAR_SLOT_NONE;
+    }
+    bool hasBottomTextLane() const {
+      return bottomLeft != STATUS_BAR_SLOT_NONE || bottomCenter != STATUS_BAR_SLOT_NONE ||
+             bottomRight != STATUS_BAR_SLOT_NONE;
+    }
+    bool hasTopBar() const {
+      return hasTopTextLane() || (showsProgressBar() && progressBarPosition == STATUS_BAR_PROGRESS_POS_TOP);
+    }
+    bool hasBottomBar() const {
+      return hasBottomTextLane() || (showsProgressBar() && progressBarPosition == STATUS_BAR_PROGRESS_POS_BOTTOM);
+    }
     bool showsProgressBar() const { return progressBarMode != HIDE_PROGRESS; }
-    bool showsTitle() const { return titleMode != HIDE_TITLE; }
-    bool showsClock() const { return clockMode != STATUS_BAR_CLOCK_HIDE; }
-    // Visibility of the text lane. Clock hardware presence is the caller's
-    // concern: pass halClock.isAvailable(), or true for layout reservation.
-    bool textLaneVisible(bool clockAvailable) const {
-      return showChapterPageCount || showBookProgressPercent || showsTitle() || showBattery ||
-             (showsClock() && clockAvailable);
+    bool showsChapterTitle() const {
+      return topLeft == STATUS_BAR_SLOT_CHAPTER_TITLE || topCenter == STATUS_BAR_SLOT_CHAPTER_TITLE ||
+             topRight == STATUS_BAR_SLOT_CHAPTER_TITLE || bottomLeft == STATUS_BAR_SLOT_CHAPTER_TITLE ||
+             bottomCenter == STATUS_BAR_SLOT_CHAPTER_TITLE || bottomRight == STATUS_BAR_SLOT_CHAPTER_TITLE ||
+             titleMode == STATUS_BAR_TITLE::CHAPTER_TITLE;
+    }
+    bool showsBookTitle() const {
+      return topLeft == STATUS_BAR_SLOT_BOOK_TITLE || topCenter == STATUS_BAR_SLOT_BOOK_TITLE ||
+             topRight == STATUS_BAR_SLOT_BOOK_TITLE || bottomLeft == STATUS_BAR_SLOT_BOOK_TITLE ||
+             bottomCenter == STATUS_BAR_SLOT_BOOK_TITLE || bottomRight == STATUS_BAR_SLOT_BOOK_TITLE ||
+             titleMode == STATUS_BAR_TITLE::BOOK_TITLE;
+    }
+    bool showsTitle() const { return showsChapterTitle() || showsBookTitle(); }
+    bool showsClock() const {
+      return topLeft == STATUS_BAR_SLOT_CLOCK || topCenter == STATUS_BAR_SLOT_CLOCK ||
+             topRight == STATUS_BAR_SLOT_CLOCK || bottomLeft == STATUS_BAR_SLOT_CLOCK ||
+             bottomCenter == STATUS_BAR_SLOT_CLOCK || bottomRight == STATUS_BAR_SLOT_CLOCK ||
+             clockMode != STATUS_BAR_CLOCK_HIDE;
+    }
+    // Visibility of any status bar text lane.
+    bool textLaneVisible(bool /*clockAvailable*/) const {
+      return hasBottomTextLane() || hasTopTextLane() || showChapterPageCount || showBookProgressPercent ||
+             showBattery || showsTitle();
     }
   };
   StatusBarSpec statusBarSpec() const;

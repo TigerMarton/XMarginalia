@@ -252,6 +252,18 @@ swallow machinery (now a one-line wrapper kept for Minesweeper's flag hold).
 After that merge `base` fast-forwards along `crosspoint/develop` as before;
 the next syncs should be routine again until upstream's next big line.
 
+## CrossInk Integration & Multi-Upstream Synchronization
+
+This fork incorporates the high-UX reading enhancements from **CrossInk** (`uxjulia/CrossInk`), unified for both the **Xteink X4 Pro** and the **Onyx BOOX Picco**:
+
+- **P2P Nearby Transfer**: Direct device-to-device book transfer over ESP-NOW (`NearbyBookTransferActivity`) with mutual exclusion against CrossPlay's multiplayer `LinkRadio`.
+- **Hardware-Backed Reading Stats**: Uses dedicated I2C RTC (BM8563) on BOOX Picco for offline timestamped stats; monotonic accumulation + SNTP on X4 Pro.
+- **Per-Book Typography & Layout**: Per-book font size, line spacing, margins, and CSS toggle saved in `.crosspoint/epub_<hash>/settings.json`.
+- **Reading Visual Enhancements**: Eye-pacing guide dots, forced first-line paragraph indents, and markup styling (`<mark>`, `<s>`, `<del>`).
+- **7-Slot Modular Status Bar**: Two independent lanes (Top and Bottom), Left/Center/Right slots, repositionable progress bar (Top/Bottom), and new UI themes (**Dashboard** and **Minimal**).
+- **Multi-Upstream Synchronization Tooling**: `scripts_local/sync-all.sh` audits seam boundaries, verifies partition safety (`scripts_local/check-partitions.sh`), and executes master host unit tests (`host-tests/run-all.sh`).
+- **Partition & Flash Safety**: Enforces strict flash offset safety: BOOX Picco factory binary is strictly at `0xE0000` (preserving vendor bootloader and `safeboot`), while X4 Pro is at `0x10000`.
+
 ## Why this base at all
 
 An earlier incarnation of this fork sat on a different CrossPoint fork, picked

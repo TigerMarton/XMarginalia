@@ -300,7 +300,7 @@ void BmpViewerActivity::onExit() {
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
 }
 
-bool BmpViewerActivity::saveJpegSleepCover() {
+bool BmpViewerActivity::saveJpegToBmp(const char* dstPath) {
   if (Storage.exists(JPEG_SLEEP_TMP_PXC) && !Storage.remove(JPEG_SLEEP_TMP_PXC)) {
     LOG_ERR("BMP", "Failed to remove previous sleep image pixels");
     return false;
@@ -374,17 +374,45 @@ bool BmpViewerActivity::saveJpegSleepCover() {
       return false;
     }
   }
+  input.close();
   if (!output.close()) {
     LOG_ERR("BMP", "Failed to close sleep image");
     return false;
   }
-  if (!Storage.replaceFile(CUSTOM_SLEEP_TMP_BMP, CUSTOM_SLEEP_ROOT_BMP)) {
-    // ponytail: FAT replacement is not atomic; keep the complete temp for recovery.
+  if (!Storage.replaceFile(CUSTOM_SLEEP_TMP_BMP, dstPath)) {
     keepBmpTemp = true;
     LOG_ERR("BMP", "Failed to publish sleep image");
     return false;
   }
   return true;
+}
+
+bool BmpViewerActivity::copyFileAtomic(const std::string& src, const std::string& dst) {
+  if (src == dst) return true;
+  auto buffer = makeUniqueNoThrow<uint8_t[]>(COPY_BUFFER_SIZE);
+  if (!buffer) return false;
+  const std::string tmp = dst + ".tmp";
+  HalFile inFile, outFile;
+  if (!Storage.openFileForRead("BMP", src, inFile) || !Storage.openFileForWrite("BMP", tmp, outFile)) {
+    return false;
+  }
+  int bytesRead;
+  bool writeOk = true;
+  while ((bytesRead = inFile.read(buffer.get(), COPY_BUFFER_SIZE)) > 0) {
+    if (outFile.write(buffer.get(), static_cast<size_t>(bytesRead)) != static_cast<size_t>(bytesRead)) {
+      writeOk = false;
+      break;
+    }
+  }
+  inFile.close();
+  outFile.close();
+  if (!writeOk || bytesRead < 0) {
+    Storage.remove(tmp.c_str());
+    return false;
+  }
+  const bool replaced = Storage.replaceFile(tmp.c_str(), dst.c_str());
+  if (!replaced) Storage.remove(tmp.c_str());
+  return replaced;
 }
 
 void BmpViewerActivity::doSetSleepCover() {
@@ -397,34 +425,11 @@ void BmpViewerActivity::doSetSleepCover() {
   const char* destination =
       transparentMode ? (FsHelpers::hasPngExtension(filePath) ? TRANSPARENT_SLEEP_ROOT_PNG : TRANSPARENT_SLEEP_ROOT_BMP)
                       : CUSTOM_SLEEP_ROOT_BMP;
-  bool success = filePath == destination;
-
+  bool success = false;
   if (jpeg) {
-    success = saveJpegSleepCover();
-  } else if (!success) {
-    auto buffer = makeUniqueNoThrow<uint8_t[]>(COPY_BUFFER_SIZE);
-    if (!buffer) {
-      LOG_ERR("BMP", "OOM: sleep cover copy buffer");
-    } else {
-      // Copy beside the target and swap in only a complete image, so a failed
-      // copy keeps the previous sleep cover instead of a truncated one.
-      const std::string tmp = std::string(destination) + ".tmp";
-      HalFile inFile, outFile;
-      if (Storage.openFileForRead("BMP", filePath, inFile) && Storage.openFileForWrite("BMP", tmp, outFile)) {
-        int bytesRead;
-        success = true;
-        while ((bytesRead = inFile.read(buffer.get(), COPY_BUFFER_SIZE)) > 0) {
-          if (outFile.write(buffer.get(), static_cast<size_t>(bytesRead)) != static_cast<size_t>(bytesRead)) {
-            success = false;
-            break;
-          }
-        }
-        if (bytesRead < 0) success = false;
-        outFile.close();
-        success = success && Storage.replaceFile(tmp.c_str(), destination);
-        if (!success) Storage.remove(tmp.c_str());
-      }
-    }
+    success = saveJpegToBmp(destination);
+  } else {
+    success = copyFileAtomic(filePath, destination);
   }
 
   if (success) {
@@ -439,9 +444,70 @@ void BmpViewerActivity::doSetSleepCover() {
   onEnter();
 }
 
+void BmpViewerActivity::doAddToSleepRotation() {
+  GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+  if (!Storage.exists("/sleepscreen")) {
+    Storage.mkdir("/sleepscreen");
+  }
+  std::string filename = filePath.substr(filePath.find_last_of('/') + 1);
+  const bool jpeg = FsHelpers::hasJpgExtension(filePath);
+  if (jpeg) {
+    const auto dot = filename.find_last_of('.');
+    if (dot != std::string::npos) filename = filename.substr(0, dot) + ".bmp";
+  }
+  const std::string destination = "/sleepscreen/" + filename;
+
+  bool success = false;
+  if (jpeg) {
+    success = saveJpegToBmp(destination.c_str());
+  } else {
+    success = copyFileAtomic(filePath, destination);
+  }
+
+  if (success) {
+    GUI.drawPopup(renderer, tr(STR_DONE));
+  } else {
+    GUI.drawPopup(renderer, tr(STR_FAILED_LOWER));
+  }
+  delay(1000);
+  onEnter();
+}
+
+void BmpViewerActivity::doSetBootScreen() {
+  GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+  const char* destination = "/bootscreen.bmp";
+
+  bool success = false;
+  if (FsHelpers::hasJpgExtension(filePath)) {
+    success = saveJpegToBmp(destination);
+  } else {
+    success = copyFileAtomic(filePath, destination);
+  }
+
+  if (success) {
+    GUI.drawPopup(renderer, tr(STR_DONE));
+  } else {
+    GUI.drawPopup(renderer, tr(STR_FAILED_LOWER));
+  }
+  delay(1000);
+  onEnter();
+}
+
 void BmpViewerActivity::loop() {
   // Keep CPU awake/polling so 1st click works
   Activity::loop();
+
+  const bool wasPopupActive = optionPopup.isActive();
+  if (optionPopup.handleInput(mappedInput, [this] {
+        RenderLock lock;
+        optionPopup.processRender(renderer, mappedInput);
+      })) {
+    return;
+  }
+  if (wasPopupActive && !optionPopup.isActive()) {
+    onEnter();
+    return;
+  }
 
   auto openSibling = [this](const int delta) {
     if (currentImageIndex < 0) {
@@ -480,19 +546,22 @@ void BmpViewerActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) || mappedInput.wasScreenLongPress(touchX, touchY)) {
     if (!canSetSleepCover()) return;
 
-    auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_SET_SLEEP_COVER_CONFIRM),
-                                                                filePath.substr(filePath.find_last_of('/') + 1));
-    if (!confirmation) {
-      LOG_ERR("BMP", "OOM: sleep cover confirmation (%zu bytes)", sizeof(ConfirmationActivity));
-      return;
-    }
-    startActivityForResult(std::move(confirmation), [this](const ActivityResult& result) {
-      if (result.isCancelled) {
-        onEnter();
-        return;
+    static constexpr StrId ACTION_NAMES[] = {
+        StrId::STR_SET_SLEEP_COVER,
+        StrId::STR_ADD_TO_SLEEP_ROTATION,
+        StrId::STR_SET_AS_BOOT_SCREEN,
+    };
+    optionPopup.show(StrId::STR_SET_SLEEP_COVER, ACTION_NAMES, 3, 0, [this](int idx) {
+      if (idx == 0) {
+        doSetSleepCover();
+      } else if (idx == 1) {
+        doAddToSleepRotation();
+      } else if (idx == 2) {
+        doSetBootScreen();
       }
-      doSetSleepCover();
     });
+    RenderLock lock;
+    optionPopup.processRender(renderer, mappedInput);
     return;
   }
 

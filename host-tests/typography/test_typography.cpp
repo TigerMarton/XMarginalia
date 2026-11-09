@@ -191,6 +191,6 @@ int main() {
   if (test_guide_dot_spacing_math()) return 1;
   if (test_forced_paragraph_indent_logic()) return 1;
 
-  printf("All typography host tests passed! (%d checks)\n", g_checks);
+  printf("%d checks, 0 failed\n", g_checks);
   return 0;
 }

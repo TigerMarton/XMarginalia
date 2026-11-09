@@ -12,6 +12,10 @@
  * esp_http_client: https is verified against the CA bundle, plain http is
  * used for local servers (transport is chosen from the URL scheme).
  */
+#if defined(ESP32) && __has_include(<esp_heap_caps.h>)
+#include <esp_heap_caps.h>
+#endif
+
 class HttpDownloader {
  public:
   using ProgressCallback = std::function<void(size_t downloaded, size_t total)>;
@@ -33,6 +37,24 @@ class HttpDownloader {
   // downloadToFile() and fail into their error UI instead.
   static constexpr uint32_t MIN_TLS_FREE_HEAP = 40000;
   static constexpr uint32_t MIN_TLS_MAX_ALLOC = 20000;
+
+  static bool hasHeapFloor(const std::string& url = "") {
+    const bool isHttps = url.rfind("https://", 0) == 0;
+#if defined(ESP32)
+#if defined(BOARD_HAS_PSRAM) && __has_include(<esp_heap_caps.h>)
+    if (psramFound()) {
+      return ESP.getFreeHeap() >= 10000 &&
+             (!isHttps || heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) >= MIN_TLS_MAX_ALLOC);
+    }
+#endif
+    if (!isHttps && !url.empty()) {
+      return ESP.getFreeHeap() >= 10000;
+    }
+    return ESP.getFreeHeap() >= MIN_TLS_FREE_HEAP && ESP.getMaxAllocHeap() >= MIN_TLS_MAX_ALLOC;
+#else
+    return true;
+#endif
+  }
 
   using Header = std::pair<std::string, std::string>;
 

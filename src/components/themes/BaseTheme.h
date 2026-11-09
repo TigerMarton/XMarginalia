@@ -300,6 +300,25 @@ class BaseTheme {
   static void drawSelectionActions(const GfxRenderer& renderer, Rect rect, int count = 3, int firstAction = 0);
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message) const;
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;
+  struct StatusBarContext {
+    float bookProgress = 0.0f;
+    int currentPage = 1;
+    int pageCount = 1;
+    int currentBookPage = 0;
+    int bookPageCount = 0;
+    const char* bookTitle = "";
+    const char* chapterTitle = "";
+    bool isPageBookmarked = false;
+    bool pageCountEstimated = false;
+    int timeToChapterMin = -1;
+    int timeToBookMin = -1;
+    int paddingBottom = 0;
+    int paddingTop = 0;
+    int textYOffset = 0;
+    bool fillMargin = true;
+  };
+
+  static void drawModularStatusBar(GfxRenderer& renderer, const StatusBarContext& ctx);
   static void drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage, const int pageCount,
                             std::string title, const int paddingBottom = 0, const int textYOffset = 0,
                             const bool fillMargin = true, const bool isPageBookmarked = false,

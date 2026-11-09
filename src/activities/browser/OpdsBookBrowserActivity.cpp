@@ -17,6 +17,10 @@
 #include <Util.h>
 #include <WolfsslCrypto.h>
 
+#if defined(ESP32) && __has_include(<esp_heap_caps.h>)
+#include <esp_heap_caps.h>
+#endif
+
 #include <iterator>
 
 #include "BookKey.h"
@@ -319,13 +323,28 @@ void OpdsBookBrowserActivity::fetchFeed(const std::string& path) {
     return;
   }
 
+#if defined(ESP32) && defined(BOARD_HAS_PSRAM) && __has_include(<esp_heap_caps.h>)
+  const bool hasPsram = psramFound();
+  if (hasPsram) {
+    heap_caps_malloc_extmem_enable(64);
+  }
+#endif
+
   const std::string url = UrlUtils::buildUrl(server.url, path);
   OpdsFeedParser parser;
   const auto status = opdsClient.fetchFeed(url, parser);
+
+#if defined(ESP32) && defined(BOARD_HAS_PSRAM) && __has_include(<esp_heap_caps.h>)
+  if (hasPsram) {
+    heap_caps_malloc_extmem_enable(4096);
+  }
+#endif
+
   // The token state may have changed (renewed, or cleared on failure); persist
   // only when an auth handshake actually ran.
   if (opdsClient.tokensDirty()) persistTokens();
   if (status != freeink::opds::OpdsClient::FetchStatus::Ok) {
+    LOG_ERR("OPDS", "fetchFeed failed (status %d): %s", static_cast<int>(status), url.c_str());
     switch (status) {
       case freeink::opds::OpdsClient::FetchStatus::CredentialsMissing:
         fail(StrId::STR_SET_CREDENTIALS_FIRST);
@@ -496,8 +515,11 @@ std::string OpdsBookBrowserActivity::downloadDestination(const OpdsEntry& book) 
   // multi-second download follows), so one reserve'd owning string is right.
   std::string filename;
   filename.reserve(96);
-  if (haveFolder) filename += folder;
-  filename += '/';
+  if (haveFolder) {
+    if (folder[0] != '/') filename += '/';
+    filename += folder;
+  }
+  if (filename.empty() || filename.back() != '/') filename += '/';
   filename += opdsBookFilename(book.author, book.title, static_cast<OpdsFilenameFormat>(SETTINGS.opdsFilenameFormat));
   return filename;
 }
@@ -560,12 +582,31 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
     releaseEntries();
   }
 
+#if defined(ESP32) && defined(BOARD_HAS_PSRAM) && __has_include(<esp_heap_caps.h>)
+  const bool hasPsram = psramFound();
+  if (hasPsram) {
+    heap_caps_malloc_extmem_enable(64);
+  }
+#endif
+
   const freeink::opds::HttpAuth dlAuth = opdsClient.downloadAuth();
+  std::string dlUser = dlAuth.username;
+  std::string dlPass = dlAuth.password;
+  if (dlAuth.bearer.empty() && dlUser.empty() && !server.username.empty()) {
+    dlUser = server.username;
+    dlPass = server.password;
+  }
   std::vector<HttpDownloader::Header> headers = dlAuth.headers;
   if (!dlAuth.bearer.empty()) headers.push_back({"Authorization", "Bearer " + dlAuth.bearer});
   // downloadFile() (CatalogActivity) releases font caches, checks the TLS heap
   // floor, and pumps cancel input during the transfer.
-  const auto result = downloadFile(downloadUrl, filename, dlAuth.username, dlAuth.password, headers);
+  const auto result = downloadFile(downloadUrl, filename, dlUser, dlPass, headers);
+
+#if defined(ESP32) && defined(BOARD_HAS_PSRAM) && __has_include(<esp_heap_caps.h>)
+  if (hasPsram) {
+    heap_caps_malloc_extmem_enable(4096);
+  }
+#endif
 
   if (result == HttpDownloader::OK && !verifyAndRegisterEpub(filename)) return;
   finishDownload(result);
@@ -920,7 +961,7 @@ void OpdsBookBrowserActivity::loadDetailCover(const std::string& docUrl, const s
   std::string tmp = "/.crosspoint/opds_cover";
   tmp += isPng ? ".png" : ".jpg";
 
-  if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP) {
+  if (!HttpDownloader::hasHeapFloor(url)) {
     LOG_INF("OPDS", "Skipping cover: low heap");
     return;
   }

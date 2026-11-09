@@ -223,6 +223,6 @@ int main() {
   testPacketEncodingDecoding();
   testReliableTransferSessionFlow();
   testWirePayloadEncodingCrossInk();
-  printf("All %d Nearby Transfer checks passed successfully!\n", testsRun);
+  printf("%d checks, 0 failed\n", testsRun);
   return 0;
 }

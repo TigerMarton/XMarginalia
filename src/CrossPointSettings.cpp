@@ -324,6 +324,14 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
 
 CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {
   StatusBarSpec spec;
+  spec.topLeft = statusBarTopLeft;
+  spec.topCenter = statusBarTopCenter;
+  spec.topRight = statusBarTopRight;
+  spec.bottomLeft = statusBarBottomLeft;
+  spec.bottomCenter = statusBarBottomCenter;
+  spec.bottomRight = statusBarBottomRight;
+  spec.progressBarPosition = statusBarProgressBarPosition;
+
   spec.showChapterPageCount = statusBarChapterPageCount != 0;
   spec.showBookProgressPercent = statusBarBookProgressPercentage != 0;
   spec.titleMode = statusBarTitle;

@@ -54,6 +54,16 @@ done
 # image being flashed -- an earlier version of this script conflated the two and
 # refused exactly the flash you most want: putting a unit back to a clean
 # release without a cable. It is one-way, so it says so out loud.
+# NEVER A PICCO. Picco has a single app slot and keeps the vendor partition table
+# with safeboot recovery; Wi-Fi flashing OTA is disabled for this hardware.
+case "$ENV_NAME_FW" in
+  *picco*)
+    echo "error: wifi-flash.sh does not support the BOOX Picco; it has only one app slot" >&2
+    echo "       and keeps the vendor partition table. Flash via USB with:" >&2
+    echo "         pio run -e $ENV_NAME_FW -t upload" >&2
+    exit 2 ;;
+esac
+
 FAREWELL=0
 case "$ENV_NAME_FW" in
   x4pro|sticky|papermono) ;;

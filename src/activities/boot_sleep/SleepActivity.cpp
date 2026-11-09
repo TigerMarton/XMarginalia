@@ -506,7 +506,7 @@ bool findNextValidSleepImage(HalFile& dir, const SleepRecentKind recentKind, cha
   return false;
 }
 
-bool selectRandomSleepFile(const char* firstDirPath, const char* secondDirPath, const SleepRecentKind recentKind,
+bool selectRandomSleepFile(const char* const* dirPaths, const size_t dirCount, const SleepRecentKind recentKind,
                            std::string& selectedPath) {
   auto name = makeUniqueNoThrow<char[]>(MAX_SLEEP_FILE_NAME_LEN);
   if (!name) {
@@ -514,11 +514,11 @@ bool selectRandomSleepFile(const char* firstDirPath, const char* secondDirPath, 
     return false;
   }
 
-  constexpr size_t DIRECTORY_COUNT = 2;
-  const char* dirPaths[DIRECTORY_COUNT] = {firstDirPath, secondDirPath};
-  uint16_t directoryCounts[DIRECTORY_COUNT] = {};
+  if (dirCount == 0 || dirCount > 8) return false;
+  uint16_t directoryCounts[8] = {};
   uint16_t fileCount = 0;
-  for (size_t i = 0; i < DIRECTORY_COUNT; i++) {
+  for (size_t i = 0; i < dirCount; i++) {
+    directoryCounts[i] = 0;
     auto dir = Storage.open(dirPaths[i]);
     if (!dir || !dir.isDirectory()) continue;
 
@@ -622,9 +622,14 @@ bool selectRandomSleepFile(const char* firstDirPath, const char* secondDirPath, 
 
   size_t directoryIndex = 0;
   uint16_t localIndex = randomFileIndex;
-  if (randomFileIndex >= directoryCounts[0]) {
-    directoryIndex = 1;
-    localIndex = static_cast<uint16_t>(randomFileIndex - directoryCounts[0]);
+  uint16_t accum = 0;
+  for (size_t i = 0; i < dirCount; i++) {
+    if (randomFileIndex < accum + directoryCounts[i]) {
+      directoryIndex = i;
+      localIndex = static_cast<uint16_t>(randomFileIndex - accum);
+      break;
+    }
+    accum += directoryCounts[i];
   }
 
   auto dir = Storage.open(dirPaths[directoryIndex]);
@@ -644,6 +649,12 @@ bool selectRandomSleepFile(const char* firstDirPath, const char* secondDirPath, 
   setLCGState(recentKind, lcgSeed, lcgState, lcgIndexesLeft - 1, lcgIndexesTotal);
   APP_STATE.saveToFile();
   return true;
+}
+
+bool selectRandomSleepFile(const char* firstDirPath, const char* secondDirPath, const SleepRecentKind recentKind,
+                           std::string& selectedPath) {
+  const char* dirs[2] = {firstDirPath, secondDirPath};
+  return selectRandomSleepFile(dirs, 2, recentKind, selectedPath);
 }
 
 bool drawSleepPopupPreservingFrame(GfxRenderer& renderer) {
@@ -812,11 +823,12 @@ bool SleepActivity::renderCustomSleepBmp(const std::string& path) const {
 }
 
 void SleepActivity::renderCustomSleepScreen() const {
-  // /sleep.bmp on the SD root takes priority over both custom sleep directories.
+  // /sleep.bmp on the SD root takes priority over custom sleep directories.
   if (renderCustomSleepBmp("/sleep.bmp")) return;
 
   std::string selectedPath;
-  selectRandomSleepFile("/.sleep", "/sleep", SleepRecentKind::Standard, selectedPath);
+  const char* dirs[3] = {"/sleepscreen", "/sleep", "/.sleep"};
+  selectRandomSleepFile(dirs, 3, SleepRecentKind::Standard, selectedPath);
   if (!selectedPath.empty()) {
     delay(100);
     if (renderCustomSleepBmp(selectedPath)) return;

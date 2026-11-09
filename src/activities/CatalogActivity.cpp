@@ -185,8 +185,7 @@ HttpDownloader::DownloadError CatalogActivity::downloadFile(const std::string& u
   // refuse to start below the floor. A doomed transfer otherwise dies
   // mid-stream with MEMORY_E, or abort()s on an interior allocation.
   if (auto* fcm = renderer.getFontCacheManager()) fcm->releaseSdFontCaches();
-  if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
-      ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC) {
+  if (!HttpDownloader::hasHeapFloor(url)) {
     LOG_ERR("CAT", "Low heap for download (%u free, %u max block)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     return HttpDownloader::HTTP_ERROR;
   }
@@ -207,7 +206,11 @@ void CatalogActivity::finishDownload(const HttpDownloader::DownloadError result)
     downloadFinished(result == HttpDownloader::ABORTED);
   } else {
     LOG_ERR("CAT", "Download failed: %d", static_cast<int>(result));
-    fail(StrId::STR_DOWNLOAD_FAILED);
+    if (result == HttpDownloader::UNAUTHORIZED) {
+      fail(StrId::STR_FEED_UNAUTHORIZED);
+    } else {
+      fail(StrId::STR_DOWNLOAD_FAILED);
+    }
   }
 }
 

@@ -737,6 +737,23 @@ def main(env):
         "HalGPIO capacitive page keys (none on a host)",
         marker="wasCapacitivePagePressed",
     )
+    patch(
+        src / "HalGPIO.h",
+        "  bool hasTouch() const;",
+        "  bool hasTouch() const;\n"
+        "  bool hasFrontButtons() const { return false; }",
+        "HalGPIO hasFrontButtons (none on a host)",
+        marker="hasFrontButtons",
+    )
+
+    patch(
+        src / "WiFi.h",
+        "inline constexpr arduino_event_id_t ARDUINO_EVENT_WIFI_AP_START = 1;",
+        "inline constexpr arduino_event_id_t ARDUINO_EVENT_WIFI_AP_START = 1;\n"
+        "inline constexpr arduino_event_id_t ARDUINO_EVENT_WIFI_STA_GOT_IP = 2;",
+        "WiFi.h ARDUINO_EVENT_WIFI_STA_GOT_IP",
+        marker="ARDUINO_EVENT_WIFI_STA_GOT_IP",
+    )
 
     # -- the seam, checked rather than remembered -------------------------------
     #

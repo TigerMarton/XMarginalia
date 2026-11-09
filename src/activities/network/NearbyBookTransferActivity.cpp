@@ -837,9 +837,13 @@ void NearbyBookTransferActivity::drawChrome() {
   };
   auto progress = [&]() {
     y += metrics.verticalSpacing;
-    GUI.drawProgressBar(renderer, Rect{metrics.contentSidePadding, y, textWidth, metrics.progressBarHeight},
+    const int barY = y;
+    GUI.drawProgressBar(renderer, Rect{metrics.contentSidePadding, barY, textWidth, metrics.progressBarHeight},
                         progressPermille_.load(std::memory_order_relaxed), 1000);
-    y += metrics.progressBarHeight + metrics.verticalSpacing;
+    // BaseTheme::drawProgressBar renders the centered percentage text at (barY + progressBarHeight + 15).
+    // Advance past the progress bar, percentage text, and spacing before drawing the transferred bytes.
+    const int percentHeight = renderer.getLineHeight(UI_10_FONT_ID);
+    y = barY + metrics.progressBarHeight + 15 + percentHeight + metrics.verticalSpacing;
     char text[48];
     snprintf(text, sizeof(text), "%lu / %lu KB",
              static_cast<unsigned long>(transferredKb_.load(std::memory_order_relaxed)),
