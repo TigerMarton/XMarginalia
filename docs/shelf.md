@@ -591,7 +591,9 @@ arithmetic lives in `src/activities/home/HomeShelfRows.h` and
 `host-tests/homeshelf` walks every theme; use it rather than re-deriving it.
 **Do not count RoundedRaff's Continue Reading row**: it IS the recent book,
 already subtracted. This page once said to remember it, the code did, and that
-was the same bug a second time (report box #647, 2026-10-04).
+was the same bug a second time (report box #647, 2026-10-04). The same rule applies
+to **MinimalTheme** (`.homeContinueReadingInMenu = true` with zero cover tile height)
+and **DashboardTheme** (which draws the stats card above the menu rows).
 
 Point 4 exists because `goHome()` restores Home's selection by matching the
 departing activity's _name_ against its own `HomeMenuItem` list, which cannot

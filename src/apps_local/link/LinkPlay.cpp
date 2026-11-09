@@ -186,4 +186,17 @@ bool PlayBase::takeRaw(uint8_t* out, const uint8_t capacity, uint8_t& length) {
   return true;
 }
 
+uint32_t PlayBase::matchSeed(const uint32_t salt) {
+  const Address& local = link().localAddress();
+  const Address& peer = session_.peerAddress();
+  uint32_t s = 2166136261u ^ salt;
+  for (size_t i = 0; i < 6; ++i) {
+    const uint8_t lo = local.bytes[i] < peer.bytes[i] ? local.bytes[i] : peer.bytes[i];
+    const uint8_t hi = local.bytes[i] < peer.bytes[i] ? peer.bytes[i] : local.bytes[i];
+    s = (s ^ lo) * 16777619u;
+    s = (s ^ hi) * 16777619u;
+  }
+  return s == 0 ? 1 : s;
+}
+
 }  // namespace linkplay

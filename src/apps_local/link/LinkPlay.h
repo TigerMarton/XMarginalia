@@ -78,6 +78,16 @@ enum class GameId : uint16_t {
   // last move to two, which moved every field after them.
   Go = 0x0A02,
   Hex = 0x0B01,
+  TabletopReversi = 0x0C01,
+  TabletopMancala = 0x0C02,
+  TabletopMorris = 0x0C03,
+  TabletopOnitama = 0x0C04,
+  TabletopLiarsDice = 0x0C05,
+  TabletopDobutsu = 0x0C06,
+  TabletopBackgammon = 0x0C07,
+  TabletopSantorini = 0x0C08,
+  TabletopQuoridor = 0x0C09,
+  TabletopDominoes = 0x0C0A,
   // Reserved for host tests, which need an id no real game will ever use.
   Test = 0xFF01,
 };
@@ -93,8 +103,28 @@ enum class GameId : uint16_t {
 // guard, but it turns a silent protocol bug into a compile error, and the
 // alternative is nothing.
 constexpr GameId kAllGameIds[] = {
-    GameId::Chess,        GameId::ConnectFour, GameId::Battleship, GameId::Jaipur, GameId::Checkers, GameId::Yahtzee,
-    GameId::Knucklebones, GameId::SeaSalt,     GameId::ToyBattle,  GameId::Go,     GameId::Hex,      GameId::Test,
+    GameId::Chess,
+    GameId::ConnectFour,
+    GameId::Battleship,
+    GameId::Jaipur,
+    GameId::Checkers,
+    GameId::Yahtzee,
+    GameId::Knucklebones,
+    GameId::SeaSalt,
+    GameId::ToyBattle,
+    GameId::Go,
+    GameId::Hex,
+    GameId::TabletopReversi,
+    GameId::TabletopMancala,
+    GameId::TabletopMorris,
+    GameId::TabletopOnitama,
+    GameId::TabletopLiarsDice,
+    GameId::TabletopDobutsu,
+    GameId::TabletopBackgammon,
+    GameId::TabletopSantorini,
+    GameId::TabletopQuoridor,
+    GameId::TabletopDominoes,
+    GameId::Test,
 };
 
 constexpr bool gameIdsAreDistinct() {
@@ -180,6 +210,10 @@ class PlayBase {
   // minutes is indistinguishable from an idle device, and the sleep timer would
   // take the second one. LinkActivity wires this to preventAutoSleep().
   bool wantsAwake() const { return phase_ != Phase::Off; }
+
+  // Deterministic 32-bit seed computed symmetrically from both paired devices'
+  // MAC addresses, identical on both ends of a match.
+  uint32_t matchSeed(uint32_t salt = 0);
 
  protected:
   bool playRaw(const uint8_t* state, uint8_t length);

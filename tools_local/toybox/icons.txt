@@ -465,3 +465,7 @@ wordle        = spell-check
 # The keyboard's delete key: Lucide's `delete` is a backspace key, which is the
 # thing on every phone keyboard, where an arrow alone read as "go back".
 wordle_delete = delete
+
+# TABLETOP suite. `dices` is two tumbling cubes with pips, the universal
+# mark for tabletop and board games.
+tabletop      = dices
