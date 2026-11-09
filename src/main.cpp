@@ -1088,7 +1088,7 @@ void setup() {
   }
 
   // First serial output only here to avoid timing inconsistencies for power button press duration verification
-  LOG_DBG("MAIN", "Starting CrossPlay version " CROSSPOINT_VERSION);
+  LOG_DBG("MAIN", "Starting XMarginalia version " CROSSPOINT_VERSION);
 
   // Apply a switch moved during sleep before the first paint, so the wake
   // screen does not draw in the old night mode and then repaint.

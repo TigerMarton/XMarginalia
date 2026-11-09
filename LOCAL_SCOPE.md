@@ -7,7 +7,7 @@ same 800x480 panel and GT911 touch; three buttons, no frontlight). The **M5Stack
 800x480 panel, with FT6336G touch, two buttons and a frontlight. The **BOOX
 Picco** (since 2026-10-30) is the same S3 class again: 800x480 panel, TMA525C
 touch, Up/Down side keys and a warm/cool frontlight, but it keeps the vendor's
-partition table with one app slot and a `safeboot` recovery partition. CrossPlay
+partition table with one app slot and a `safeboot` recovery partition. XMarginalia
 writes that one slot and nothing else, so the Picco takes no update over Wi-Fi
 or from the SD card (the compromise upstream made too); see the README. The
 design floor stays the X4 Pro -- two side keys plus touch; see

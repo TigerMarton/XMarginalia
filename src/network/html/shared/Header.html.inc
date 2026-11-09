@@ -8,7 +8,7 @@
           alt=""
           width="32"
           height="32"
-        />CrossPlay</a
+        />XMarginalia</a
       >
     </h1>
     <nav class="nav-links desktop-nav">

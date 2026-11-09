@@ -87,7 +87,7 @@ bool insufficientHeap(std::string& message) {
 // on. Version alone names no device. (BridgeHttp.cpp has this twin; see
 // docs/open-items.md for why Study still carries its own transport.)
 void identify(freeink::SecureHttpClient& http, const std::string& url) {
-  http.setUserAgent("CrossPlay-ESP32-" CROSSPOINT_VERSION);
+  http.setUserAgent("XMarginalia-ESP32-" CROSSPOINT_VERSION);
   devreport::Header report[devreport::kHeaderCount];
   const int n = devreport::headersFor(url.c_str(), report);
   for (int i = 0; i < n; ++i) http.addHeader(report[i].name, report[i].value);

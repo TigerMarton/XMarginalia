@@ -3,7 +3,7 @@ _language_code: "ES"
 _order: "1"
 _bcp47: "es"
 
-STR_CROSSPLAY: "CrossPlay"
+STR_CROSSPLAY: "XMarginalia"
 STR_BOOTING: "Iniciando..."
 STR_SLEEPING: "Suspendido"
 STR_ENTERING_SLEEP: "Entrando en suspensión"

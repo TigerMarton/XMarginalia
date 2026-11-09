@@ -21,6 +21,12 @@ Everything above the marker is written by hand.
 
 <!-- releases, newest first -->
 
+### 1.0.0
+
+- XMarginalia v1.0.0: established the standalone CrossMarginalia mainline.
+- Tabletop: added a 10-game classic board and card suite (Mancala, Reversi, Nine Men's Morris, Backgammon, Chinese Checkers, Quoridor, Cribbage, Dominoes, Onitama, and Virtual Tabletop Sandbox) with full Nearby Link play.
+- UI & Reader: brought in CrossInk UI themes, customizable status bar items, and the OPDS catalog browser.
+
 ### 1.14.4
 
 - Sudoku: the lines between the 3x3 boxes are heavier, so the boxes are easier to tell apart.

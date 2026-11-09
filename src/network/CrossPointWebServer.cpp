@@ -2567,7 +2567,7 @@ void CrossPointWebServer::handleFetch() {
     return false;  // never aborts; only feeds
   };
   const auto configureClient = [](freeink::SecureHttpClient& http) {
-    http.setUserAgent("CrossPlay");
+    http.setUserAgent("XMarginalia");
     // The SecureNet transport ships no CA bundle, so peer verification always
     // fails (wolfSSL -188); skip it like HttpDownloader does. Traffic stays
     // TLS-encrypted, just unauthenticated — matching the prior library-lending flow.

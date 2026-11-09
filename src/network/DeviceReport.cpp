@@ -208,7 +208,7 @@ void capturePanic(const bool reasonRecorded) {
   // A panic reset boots the same partition, so the version running now is
   // the one that crashed; the record may ride out from a later one.
   if (!recordCrash(state, true, message, trace, CROSSPOINT_VERSION)) return;
-  LOG_INF(kTag, "panic recorded for the next request to a CrossPlay service: %s", state.crashMessage);
+  LOG_INF(kTag, "panic recorded for the next request to an XMarginalia service: %s", state.crashMessage);
   save();
 }
 

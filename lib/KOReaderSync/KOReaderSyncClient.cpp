@@ -17,8 +17,8 @@ namespace {
 // shows in its own UI; DEVICE_ID distinguishes devices server-side. Both were
 // upstream's until the fork took its own name. Nothing here reads deviceId back
 // off a download, so the change is one-way and costs an existing user nothing.
-constexpr char DEVICE_NAME[] = "CrossPlay";
-constexpr char DEVICE_ID[] = "crossplay-reader";
+constexpr char DEVICE_NAME[] = "XMarginalia";
+constexpr char DEVICE_ID[] = "xmarginalia-reader";
 
 // wolfSSL uses the default allocator, which can use PSRAM on supported builds.
 // Keep a free-space floor and room for a full TLS record when the server does

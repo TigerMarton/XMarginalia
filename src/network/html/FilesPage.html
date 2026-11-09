@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Files - CrossPlay</title>
+  <title>Files - XMarginalia</title>
   <script src="/js/jszip.min.js"></script>
   <style>
     .page-header {
@@ -1218,7 +1218,7 @@
 
   if (currentPath !== '/') {
     const leaf = currentPath.split('/').filter(Boolean).pop();
-    if (leaf) document.title = leaf + ' - Files - CrossPlay';
+    if (leaf) document.title = leaf + ' - Files - XMarginalia';
   }
 
   // Network status monitoring
@@ -3183,7 +3183,7 @@ function exportLogToFile(filename = null, isBatch = false) {
   }
   // Extract text from log entries
   const entries = logContainer.querySelectorAll('.log-entry');
-  let logText = `CrossPlay ${crosspointVersion} - EPUB Conversion Log\n`;
+  let logText = `XMarginalia ${crosspointVersion} - EPUB Conversion Log\n`;
   logText += `Generated: ${new Date().toLocaleString()}\n`;
   logText += `${'='.repeat(60)}\n\n`;
 

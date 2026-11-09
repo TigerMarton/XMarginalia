@@ -145,7 +145,7 @@ def make_cover_png() -> bytes:
         font_title = ImageFont.load_default()
         font_sub = font_title
 
-    title = 'CrossPlay'
+    title = 'XMarginalia'
     subtitle = 'User Guide'
 
     # Draw title text
@@ -207,7 +207,7 @@ def strip_toc(text: str) -> str:
         # The H1 is the first byte of the file, so anchor on start-of-string
         # as well as on a newline. Requiring the newline meant this never
         # matched and the inline TOC was never actually stripped.
-        r'((?:\A|\n)# CrossPlay User Guide\n)(.*?)(\n## 1\.)',
+        r'((?:\A|\n)# XMarginalia User Guide\n)(.*?)(\n## 1\.)',
         lambda m: m.group(1) + m.group(3),
         text,
         flags=re.DOTALL,
@@ -221,7 +221,7 @@ def split_chapters(html: str):
     positions = [(m.start(), m.group(0), m.group(2)) for m in pattern.finditer(html)]
 
     if not positions:
-        return [('intro', 'CrossPlay User Guide', html)]
+        return [('intro', 'XMarginalia User Guide', html)]
 
     intro_html = html[:positions[0][0]].strip()
     if intro_html:
@@ -265,12 +265,12 @@ def build_epub():
     body_html = md.convert(source)
 
     book = epub.EpubBook()
-    book.set_identifier('crossplay-user-guide-v1')
-    book.set_title('CrossPlay User Guide')
+    book.set_identifier('xmarginalia-user-guide-v1')
+    book.set_title('XMarginalia User Guide')
     book.set_language('en')
     # Upstream wrote this guide; the fork rebranded it and ships it.
     book.add_author('CrossPoint Reader Project')
-    book.add_author('CrossPlay')
+    book.add_author('XMarginalia')
 
     style = epub.EpubItem(
         uid='style',
@@ -280,7 +280,7 @@ def build_epub():
     )
     book.add_item(style)
 
-    # Full-size cover image (480×800) — used by CrossPlay for home-screen thumbnail.
+    # Full-size cover image (480×800) — used by XMarginalia for home-screen thumbnail.
     # uid='cover-image' matches the EPUB 2 <meta name="cover" content="cover-image"/> value.
     cover_png_bytes = make_cover_png()
     cover_img_item = epub.EpubItem(
@@ -291,15 +291,15 @@ def build_epub():
     )
     cover_img_item.properties = ['cover-image']  # EPUB 3 manifest property
     book.add_item(cover_img_item)
-    # EPUB 2 cover declaration — CrossPlay's Tier 1 OPF lookup
+    # EPUB 2 cover declaration — XMarginalia's Tier 1 OPF lookup
     book.add_metadata('OPF', 'meta', '', {'name': 'cover', 'content': 'cover-image'})
 
     # Cover page XHTML — first readable page in the spine
-    cover_page = epub.EpubHtml(title='CrossPlay User Guide', file_name='cover.xhtml', lang='en')
+    cover_page = epub.EpubHtml(title='XMarginalia User Guide', file_name='cover.xhtml', lang='en')
     cover_page.content = make_xhtml(
-        'CrossPlay User Guide',
+        'XMarginalia User Guide',
         '<div class="cover-page">'
-        '<img src="images/cover.png" alt="CrossPlay User Guide cover"/>'
+        '<img src="images/cover.png" alt="XMarginalia User Guide cover"/>'
         '</div>',
     )
     cover_page.add_item(style)

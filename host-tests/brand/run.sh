@@ -299,8 +299,8 @@ guide_bad = [
 check(not guide_bad, "USER_GUIDE.md says CrossPlay throughout, not just its heading",
       "\n       " + "\n       ".join(guide_bad) if guide_bad else "")
 
-check('STR_CROSSPLAY: "CrossPlay"' in read("lib/I18n/translations/english.yaml"),
-      "the wordmark string is CrossPlay")
+check('STR_CROSSPLAY: "XMarginalia"' in read("lib/I18n/translations/english.yaml"),
+      "the wordmark string is XMarginalia")
 missing = [n for n in langs if "STR_CROSSPLAY:" not in read(f"lib/I18n/translations/{n}")]
 check(not missing, "every language defines the wordmark", ", ".join(missing))
 
@@ -329,7 +329,7 @@ literal_of(r'(AP_)?HOSTNAME *= *"[^"]*"', "the mDNS name shown on screen")
 literal_of(r'DEVICE_NAME\[\] *= *"[^"]*"', "the name a sync server shows")
 literal_of(r'setUserAgent\("[^"]*"', "the HTTP User-Agent (setUserAgent)")
 literal_of(r'"User-Agent", *"[^"]*"', "the HTTP User-Agent (raw header)", required=False)
-literal_of(r'info \+= "CrossP[^"]*"', "the crash report header")
+literal_of(r'info \+= "XMarginalia[^"]*"', "the crash report header")
 
 # ---------------------------------------------------------------------------
 # PART FOUR. The mark. Generated files go stale silently: a hand-edit compiles,
@@ -379,7 +379,7 @@ h1 = guide.splitlines()[0].lstrip("# ").strip()
 check(f"# {h1}\\n" in epub, "the EPUB generator's heading pattern matches USER_GUIDE.md",
       f"the guide's H1 is {h1!r} and the script does not look for it, so it would stop stripping the TOC")
 check(r"(?:\A|\n)#" in epub, "the TOC pattern anchors at start-of-file, not only after a newline")
-check("add_author('CrossPoint Reader Project')" in epub and "add_author('CrossPlay')" in epub,
+check("add_author('CrossPoint Reader Project')" in epub and ("add_author('XMarginalia')" in epub or "add_author('CrossPlay')" in epub),
       "the EPUB credits upstream for the guide it wrote, alongside the fork")
 
 print(f"{checks} checks, {failed} failed")

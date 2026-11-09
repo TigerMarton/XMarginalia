@@ -64,7 +64,7 @@ const char* caRoots(const Endpoint& endpoint) {
 // way HttpDownloader's do; and the device report headers, when the toggle is
 // on. Version alone names no device.
 void identify(freeink::SecureHttpClient& http, const std::string& url) {
-  http.setUserAgent("CrossPlay-ESP32-" CROSSPOINT_VERSION);
+  http.setUserAgent("XMarginalia-ESP32-" CROSSPOINT_VERSION);
   devreport::Header report[devreport::kHeaderCount];
   const int n = devreport::headersFor(url.c_str(), report);
   for (int i = 0; i < n; ++i) http.addHeader(report[i].name, report[i].value);

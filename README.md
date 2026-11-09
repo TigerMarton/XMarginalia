@@ -1,6 +1,6 @@
 <h1 align="center">
-  <img src="site/assets/logo.svg#gh-light-mode-only" width="72" alt="CrossPlay"><img src="site/assets/logo-dark.svg#gh-dark-mode-only" width="72" alt="CrossPlay"><br>
-  CrossPlay
+  <img src="site/assets/logo.svg#gh-light-mode-only" width="72" alt="XMarginalia"><img src="site/assets/logo-dark.svg#gh-dark-mode-only" width="72" alt="XMarginalia"><br>
+  XMarginalia
 </h1>
 
 <p align="center">
@@ -25,7 +25,7 @@ The **Xteink X4 Pro**, **Seeed reTerminal Sticky**, **M5Stack PaperMono / Lite**
 devices with an 800x480 panel (480x800 portrait on Picco), capacitive touch and physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
-CrossPlay is firmware that keeps all of that and adds the other things a screen
+XMarginalia (CrossMarginalia) is firmware that keeps all of that and adds the other things a screen
 that holds still is good at: **26 games and 8 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
@@ -98,8 +98,8 @@ browser are theirs and stay theirs.
 
 ### Two devices, nothing to type
 
-Eleven of the games play over **PLAY NEARBY**: Chess, Checkers, Connect Four,
-Yahtzee, Knucklebones, Battleship, Jaipur, Sea Salt, Toy Battle, Go and Hex. Put
+Twelve of the games play over **PLAY NEARBY**: Chess, Checkers, Connect Four,
+Yahtzee, Knucklebones, Battleship, Jaipur, Sea Salt, Toy Battle, Go, Hex and Tabletop. Put
 two devices next to each other and they find one another. No pairing screen, no
 room code, no account, no router, no internet.
 

@@ -105,7 +105,7 @@ grep -rl "Button::Up\|Button::Down" src/apps_local/*/ | cut -d/ -f3 | sort -u
 | ------------ | ----------------- | ---------------- |
 | Back         | 34                | as a swipe       |
 | Confirm      | 3                 | **no**           |
-| Left / Right | 1                 | **no**           |
+| Left / Right | 2                 | **no**           |
 | Up / Down    | 15                | **yes**          |
 
 Eighteen of the thirty-six directories use Back and nothing else.
