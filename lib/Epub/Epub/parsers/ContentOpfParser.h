@@ -86,6 +86,7 @@ class ContentOpfParser final : public Print {
   std::string title;
   std::string author;
   std::string language;
+  std::string packageId;
   std::string isbn;
   std::string asin;
   std::string series;

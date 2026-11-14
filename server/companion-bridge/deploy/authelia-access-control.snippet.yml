@@ -1,0 +1,15 @@
+# ============================================================================
+# Authelia `configuration.yml` Access Control Bypass Snippet
+# ============================================================================
+# Add this rule ABOVE your catch-all `one_factor` / `two_factor` rules so
+# Authelia allows `/api/ereader/*` requests through (Caddy and FastAPI both
+# enforce `X-API-Key` authentication on that path).
+
+access_control:
+  rules:
+    - domain:
+        - "yourdomain.com"
+        - "*.yourdomain.com"
+      resources:
+        - "^/api/ereader(/.*)?$"
+      policy: bypass

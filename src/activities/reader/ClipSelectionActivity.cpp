@@ -16,6 +16,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "activities/ActivityResult.h"
+#include "apps_local/companion/CompanionClient.h"
 #include "clippings/ClippingText.h"
 #include "clippings/SelectionGeometry.h"
 #include "components/UIScale.h"
@@ -31,7 +32,8 @@ constexpr int TOUCH_DRAG_MOVEMENT_PX = 4;
 constexpr unsigned long TOUCH_PAGE_ADVANCE_HOLD_MS = 1000;
 constexpr int TOUCH_PAGE_END_DWELL_SLOP_PX = 8;
 constexpr ClippingResult::Action SELECTION_ACTIONS[] = {ClippingResult::Action::Lookup, ClippingResult::Action::Clip,
-                                                        ClippingResult::Action::Bookmark};
+                                                        ClippingResult::Action::Bookmark,
+                                                        ClippingResult::Action::AskAi};
 
 const char* cleanWordStart(const char* text) {
   if (!text) return "";
@@ -75,6 +77,7 @@ void ClipSelectionActivity::onEnter() {
   std::string dictionaryPath;
   lookupAvailable =
       mode == Mode::DefinitionLookup || DictionaryRegistry::resolveBasePath(SETTINGS.dictionaryName, dictionaryPath);
+  companionAvailable = mode == Mode::Companion || companion::CompanionClient::isConfigured();
   fontId = SETTINGS.getReaderFontId();
   lineHeight = renderer.getLineHeight(fontId);
   const bool extracted = extractWords();
@@ -621,7 +624,10 @@ bool ClipSelectionActivity::handleButtons(const uint8_t buttons) {
   }
 
   if (buttons & Input::INPUT_CONFIRM) {
-    confirmSelection(isLookup() ? ClippingResult::Action::Lookup : ClippingResult::Action::Clip);
+    const auto action = isCompanion() ? ClippingResult::Action::AskAi
+                        : isLookup()  ? ClippingResult::Action::Lookup
+                                      : ClippingResult::Action::Clip;
+    confirmSelection(action);
     return true;
   }
 
@@ -677,7 +683,7 @@ Rect ClipSelectionActivity::actionRect() const {
   const int font = uiScaleSpec().smallFontId;
   const int labelWidth =
       std::max({renderer.getTextWidth(font, tr(STR_LOOKUP)), renderer.getTextWidth(font, tr(STR_CLIP)),
-                renderer.getTextWidth(font, tr(STR_BOOKMARK_OPTION))});
+                renderer.getTextWidth(font, tr(STR_BOOKMARK_OPTION)), renderer.getTextWidth(font, tr(STR_ASK_AI))});
   const int padding = metrics.menuSpacing;
   const int count = actionCount();
   const int width = std::min(safe.width, count * (labelWidth + padding * 2) + padding * (count + 1));
@@ -802,8 +808,8 @@ bool ClipSelectionActivity::renderIncremental() {
 
   // Case 2: Transition from rangeStart < 0 to rangeStart >= 0 (user just confirmed rangeStart)
   if (rangeStart >= 0 && lastRenderedRangeStart < 0 && rangeStart == selected && selected == lastRenderedSelected) {
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), isLookup() ? tr(STR_LOOKUP) : tr(STR_DONE),
-                                              tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
+    const char* doneLabel = isCompanion() ? tr(STR_ASK_AI) : (isLookup() ? tr(STR_LOOKUP) : tr(STR_DONE));
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), doneLabel, tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 
@@ -844,8 +850,8 @@ bool ClipSelectionActivity::renderIncremental() {
     const WordBox& cursor = words[selected];
     renderer.drawRect(cursor.x + offsetX, cursor.y + offset, cursor.width, cursor.height, true);
 
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), isLookup() ? tr(STR_LOOKUP) : tr(STR_DONE),
-                                              tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
+    const char* doneLabel = isCompanion() ? tr(STR_ASK_AI) : (isLookup() ? tr(STR_LOOKUP) : tr(STR_DONE));
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), doneLabel, tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 
@@ -907,9 +913,9 @@ void ClipSelectionActivity::render(RenderLock&&) {
   if (wordCount != 0) drawSelection();
   renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
 
-  const auto labels = mappedInput.mapLabels(
-      tr(STR_BACK), rangeStart < 0 ? tr(STR_SELECT) : (isLookup() ? tr(STR_LOOKUP) : tr(STR_DONE)), tr(STR_DIR_LEFT),
-      tr(STR_DIR_RIGHT));
+  const char* doneLabel = isCompanion() ? tr(STR_ASK_AI) : (isLookup() ? tr(STR_LOOKUP) : tr(STR_DONE));
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), rangeStart < 0 ? tr(STR_SELECT) : doneLabel, tr(STR_DIR_LEFT),
+                                            tr(STR_DIR_RIGHT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
 

@@ -541,6 +541,9 @@ void XMLCALL ContentOpfParser::endElement(void* userData, const XML_Char* name) 
   }
 
   if (self->state == IN_BOOK_IDENTIFIER && xmlLocalNameEquals(name, "identifier")) {
+    if (self->packageId.empty() && !self->identifierText.empty()) {
+      self->packageId = self->identifierText;
+    }
     const std::string scheme = lowerAscii(self->identifierScheme);
     if (self->isbn.empty() &&
         (scheme.find("isbn") != std::string::npos || hasMetadataPrefix(self->identifierText, "isbn"))) {

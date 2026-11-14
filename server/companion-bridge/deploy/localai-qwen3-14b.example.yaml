@@ -1,0 +1,19 @@
+# ============================================================================
+# LocalAI Model YAML Preset Example for Qwen3-14B / Qwen2.5-9B (16GB VRAM)
+# ============================================================================
+# Place inside your LocalAI `/models/` directory (e.g. `qwen3-14b.yaml`).
+# Key settings for the E-Reader Companion:
+#   - `context_size: 4096` (prevents LocalAI's default 512/2048 truncation on RAG excerpts)
+#   - `f16: true`
+#   - `gpu_layers: 99` (keeps all layers in your 16GB VRAM)
+
+name: qwen3-14b
+backend: llama-cpp
+parameters:
+  model: Qwen3-14B-Q4_K_M.gguf
+  temperature: 0.1
+  top_p: 0.85
+context_size: 4096
+f16: true
+gpu_layers: 99
+mmap: true

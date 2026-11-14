@@ -13,6 +13,7 @@ SUITES=(
   "statusbar"
   "settingsorder"
   "tabletop"
+  "companion"
 )
 
 TOTAL_CHECKS=0

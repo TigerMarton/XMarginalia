@@ -9,6 +9,7 @@
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
+#include "apps_local/companion/CompanionClient.h"
 #include "components/UITheme.h"
 #include "util/PluginEvents.h"
 #include "util/SlideSwitch.h"
@@ -90,6 +91,9 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const 
   }
   if (SETTINGS.dictionaryName[0] != '\0') {
     items.push_back({MenuAction::DICTIONARY, StrId::STR_LOOKUP});
+  }
+  if (companion::CompanionClient::isConfigured()) {
+    items.push_back({MenuAction::ASK_AI, StrId::STR_ASK_AI});
   }
   items.push_back({MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION});
   items.push_back({MenuAction::AUTO_PAGE_TURN, StrId::STR_AUTO_TURN_PAGES_PER_MIN});

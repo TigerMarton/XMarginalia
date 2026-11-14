@@ -1,0 +1,28 @@
+# ============================================================================
+# Caddyfile Snippet for XMarginalia Anti-Spoiler AI Companion
+# ============================================================================
+# Place the `handle /api/ereader/*` block BEFORE your Authelia `forward_auth`
+# directive inside your site block so machine-to-machine requests from the
+# ESP32-S3 e-reader authenticate via `X-API-Key` instead of interactive SSO.
+
+yourdomain.com {
+    # 1. E-Reader Companion API Gate (Evaluated BEFORE Authelia)
+    handle /api/ereader/* {
+        @valid_ereader_key header X-API-Key "{$COMPANION_API_KEY}"
+        handle @valid_ereader_key {
+            reverse_proxy ereader-companion:8095
+        }
+        # Reject any request without a valid X-API-Key at the Caddy edge
+        header Content-Type "application/json"
+        respond `{"error":"Unauthorized"}` 401
+    }
+
+    # 2. Existing Web Traffic (Protected by Authelia SSO as usual)
+    handle {
+        forward_auth authelia:9091 {
+            uri /api/authz/forward-auth
+            copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+        }
+        reverse_proxy your-existing-service:8080
+    }
+}

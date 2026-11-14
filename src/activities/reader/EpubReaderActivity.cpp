@@ -31,6 +31,7 @@
 #include "ClippingStore.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "DictionaryDefinitionActivity.h"
 #include "DictionaryWordSelectActivity.h"
 #include "EpubReaderBookmarksActivity.h"
 #include "EpubReaderChapterSelectionActivity.h"
@@ -39,6 +40,7 @@
 #include "EpubReaderPercentSelectionActivity.h"
 #include "EpubReaderUtils.h"
 #include "KOReaderCredentialStore.h"
+#include "KOReaderDocumentId.h"
 #include "KOReaderSyncActivity.h"
 #include "MappedInputManager.h"
 #include "ProgressMapper.h"
@@ -55,6 +57,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "activities/util/FrontlightPanelActivity.h"
+#include "apps_local/companion/CompanionClient.h"
 #include "clippings/ClippingText.h"
 #include "clippings/ClippingsManager.h"
 #include "components/UITheme.h"
@@ -554,6 +557,10 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
       requestUpdate();
       return;
     }
+    if (clipping.action == ClippingResult::Action::AskAi) {
+      openCompanionMenu(clipping.text, /*renderImmediately=*/false);
+      return;
+    }
     if (clipping.action == ClippingResult::Action::Lookup) {
       auto page = section ? section->loadPage(section->currentPage) : nullptr;
       if (!page) {
@@ -656,6 +663,40 @@ void EpubReaderActivity::openClippings() {
 void EpubReaderActivity::loop() {
   if (loadFailurePopup.isActive()) {
     loadFailurePopup.handleInput(mappedInput, [this] { requestUpdate(); });
+    return;
+  }
+  if (companionQueryPending) {
+    companionQueryPending = false;
+    runPendingCompanionQuery();
+    return;
+  }
+  if (companionPopup.isActive()) {
+    companionPopup.handleInput(mappedInput, [this] {
+      if (companionPopup.isActive()) {
+        RenderLock lock;
+        settleOverlayRefresh();
+        companionPopup.render(renderer);
+        renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+        return;
+      }
+      requestUpdate();
+    });
+    return;
+  }
+  if (overlayPopup.isActive() && overlay == Overlay::None) {
+    if (overlayPaintPending) {
+      overlayPaintPending = false;
+      RenderLock lock;
+      renderer.waitRefreshComplete();
+      overlayRefreshPending = false;
+    }
+    overlayPopup.handleInput(mappedInput, [this] {
+      if (overlayPopup.isActive()) {
+        paintOverlayPopup();
+        return;
+      }
+      requestUpdate();
+    });
     return;
   }
   if (!epub) {
@@ -1436,6 +1477,10 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       addBookmark();
       break;
     }
+    case EpubReaderMenuActivity::MenuAction::ASK_AI: {
+      openCompanionMenu({}, /*renderImmediately=*/false);
+      break;
+    }
   }
 }
 
@@ -2128,6 +2173,10 @@ void EpubReaderActivity::renderBook() {
 
   pageBufferStale = false;  // the page is back in the framebuffer
 
+  if (companionPopup.isActive() || (overlayPopup.isActive() && overlay == Overlay::None)) {
+    return;
+  }
+
   // Toolbar menu: overlay the toolbar / panel on top of the freshly rendered page.
   if (overlay != Overlay::None && usesToolbarMenu()) {
     // The page just re-rendered under the overlay: refresh the snapshot that
@@ -2293,6 +2342,17 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   page->render(renderer, fontId, orientedMarginLeft, orientedMarginTop, guideDots);
   renderStatusBar();
   const auto tBwRender = millis();
+
+  if (companionPopup.isActive()) {
+    companionPopup.render(renderer);
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    return;
+  }
+  if (overlayPopup.isActive() && overlay == Overlay::None) {
+    overlayPopup.render(renderer);
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    return;
+  }
 
   if (absoluteImageGrayscale) {
     const auto baseMode = cleanImageBasePending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH;
@@ -3465,6 +3525,9 @@ void EpubReaderActivity::activateMoreRow(int row) {
       requestUpdate();
       return;
     }
+    case MA::ASK_AI:
+      openCompanionMenu({}, /*renderImmediately=*/true);
+      return;
     default:
       break;
   }
@@ -3750,8 +3813,8 @@ CrossPointPosition EpubReaderActivity::getCurrentPosition() const {
 void EpubReaderActivity::openQuickActions() {
   using MA = EpubReaderMenuActivity::MenuAction;
   static constexpr StrId kQuickActionIds[] = {
-      StrId::STR_SELECT_CHAPTER, StrId::STR_BOOKMARKS,     StrId::STR_FRONTLIGHT,
-      StrId::STR_TEXT_SETTINGS,  StrId::STR_READING_STATS, StrId::STR_GO_HOME_BUTTON,
+      StrId::STR_SELECT_CHAPTER, StrId::STR_BOOKMARKS, StrId::STR_FRONTLIGHT,     StrId::STR_TEXT_SETTINGS,
+      StrId::STR_READING_STATS,  StrId::STR_ASK_AI,    StrId::STR_GO_HOME_BUTTON,
   };
   overlayPopup.show(StrId::STR_QUICK_ACTIONS, kQuickActionIds, static_cast<int>(std::size(kQuickActionIds)), -1,
                     [this](int idx) {
@@ -3775,6 +3838,9 @@ void EpubReaderActivity::openQuickActions() {
                           openReadingStatsActivity();
                           break;
                         case 5:
+                          openCompanionMenu();
+                          break;
+                        case 6:
                           onReaderMenuConfirm(MA::GO_HOME);
                           break;
                         default:
@@ -3782,6 +3848,172 @@ void EpubReaderActivity::openQuickActions() {
                       }
                     });
   paintOverlayPopup();
+}
+
+void EpubReaderActivity::openCompanionMenu(std::string selectedText, const bool renderImmediately) {
+  if (!epub || !section) return;
+  if (overlay != Overlay::None) {
+    overlay = Overlay::None;
+    overlayPopup.dismiss();
+    toolbarUi.reset();
+    if (overlayPageStored) {
+      RenderLock lock;
+      settleOverlayRefresh();
+      renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
+      overlayPageStored = false;
+    } else {
+      discardOverlayPage();
+      pageBufferStale = true;
+    }
+  }
+  pendingCompanionSelectedText = std::move(selectedText);
+  if (!pendingCompanionSelectedText.empty()) {
+    const char* options[] = {tr(STR_AI_WHO_IS), tr(STR_AI_WHAT_IS), tr(STR_AI_EXPLAIN), tr(STR_AI_RECAP_STORY),
+                             tr(STR_AI_RECAP_CHAPTER)};
+    companionPopup.show(
+        tr(STR_AI_COMPANION), pendingCompanionSelectedText.c_str(), options, 5, 0, [this](const int idx) {
+          static constexpr const char* kTypes[] = {"who_is", "what_is", "explain", "recap_story", "recap_chapter"};
+          if (idx < 0 || idx >= 5) return;
+          pendingCompanionActionType = kTypes[idx];
+          companionQueryPending = true;
+        });
+  } else {
+    static constexpr StrId kOptions[] = {StrId::STR_AI_RECAP_STORY, StrId::STR_AI_RECAP_CHAPTER,
+                                         StrId::STR_AI_SELECT_WORD};
+    companionPopup.show(StrId::STR_AI_COMPANION, kOptions, 3, 0, [this](const int idx) {
+      if (idx == 0) {
+        pendingCompanionActionType = "recap_story";
+        companionQueryPending = true;
+      } else if (idx == 1) {
+        pendingCompanionActionType = "recap_chapter";
+        companionQueryPending = true;
+      } else if (idx == 2) {
+        startClipSelection(-1, -1, ClipSelectionActivity::Mode::Companion);
+      }
+    });
+  }
+  if (renderImmediately && !pageBufferStale) {
+    RenderLock lock;
+    settleOverlayRefresh();
+    companionPopup.render(renderer);
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+  } else {
+    requestUpdate();
+  }
+}
+
+void EpubReaderActivity::runPendingCompanionQuery() {
+  if (!epub || !section || pendingCompanionActionType.empty()) return;
+
+  {
+    RenderLock lock;
+    settleOverlayRefresh();
+    GUI.drawPopup(renderer, tr(STR_AI_THINKING));
+  }
+
+  if (!companionSyncMetaLoaded) {
+    companionSyncMetaLoaded = true;
+    epub->loadSyncMetadata(companionSyncMeta);
+    companionKoMd5 = KOReaderDocumentId::calculate(epub->getPath());
+  }
+
+  companion::CompanionQuery req;
+  req.bookUuid = companionSyncMeta.packageId;
+  req.isbn = companionSyncMeta.isbn;
+  req.asin = companionSyncMeta.asin;
+  req.koMd5 = companionKoMd5;
+  req.title = epub->getTitle();
+  req.author = epub->getAuthor();
+  const std::string& epubPath = epub->getPath();
+  const size_t slashPos = epubPath.find_last_of("/\\");
+  req.filename = (slashPos == std::string::npos) ? epubPath : epubPath.substr(slashPos + 1);
+  req.spineIndex = currentSpineIndex;
+  req.chapterTitle = currentChapterTitle();
+  if (currentPageVisibleOffset.has_value()) {
+    req.visibleOffset = *currentPageVisibleOffset;
+    req.hasVisibleOffset = true;
+  } else if (section->currentPage >= 0 && section->currentPage < section->pageCount) {
+    if (const auto off = section->getVisibleTextOffsetForPage(static_cast<uint16_t>(section->currentPage))) {
+      req.visibleOffset = *off;
+      req.hasVisibleOffset = true;
+    }
+  }
+  const int pageCount = std::max<int>(1, section->estimatedTotalPages());
+  req.chapterProgress =
+      std::clamp(static_cast<float>(section->currentPage + 1) / static_cast<float>(pageCount), 0.0f, 1.0f);
+  req.bookProgress = std::clamp(epub->calculateProgress(currentSpineIndex, req.chapterProgress), 0.0f, 1.0f);
+  if (section->currentPage >= 0 && section->currentPage < section->pageCount) {
+    req.anchorText = companion::extractPageAnchorText(section->getTextFromSectionFile(), 140);
+  }
+  req.selectedText = pendingCompanionSelectedText;
+  req.actionType = pendingCompanionActionType;
+  std::string().swap(pendingCompanionSelectedText);
+  std::string().swap(pendingCompanionActionType);
+  const std::string savedBookPath = epub->getPath();
+
+  // Stop the BLE page turner and release rebuildable reader state (including
+  // Epub metadata and clippings) before waking Wi-Fi + TLS so internal SRAM has
+  // maximum contiguous headroom.
+  bleturner::stopNow(3000);
+  {
+    RenderLock lock;
+    rememberCurrentContentOffset();
+    cachedSpineIndex = currentSpineIndex;
+    cachedChapterTotalPageCount = section->pageCount;
+    nextPageNumber = section->currentPage;
+    companionPopup.dismiss();
+    discardOverlayPage();
+    ImageBlock::releaseRenderCache();
+    ImageBlock::setExtractor(nullptr, nullptr);
+    section.reset();
+    epub.reset();
+    CLIPPINGS.unload();
+    if (auto* fcm = renderer.getFontCacheManager()) {
+      fcm->releaseSdFontCaches();
+    }
+    pageBufferStale = true;
+  }
+
+  const companion::CompanionResponse resp = companion::CompanionClient::query(req);
+
+  {
+    RenderLock lock;
+    auto reloaded = makeUniqueNoThrow<Epub>(savedBookPath, "/.crosspoint");
+    if (!reloaded || !reloaded->load(true, SETTINGS.embeddedStyle == 0)) {
+      LOG_ERR("COMPANION", "Failed to reload epub after query: %s", savedBookPath.c_str());
+      finish();
+      return;
+    }
+    epub = std::move(reloaded);
+    ImageBlock::setExtractor(epub.get(), [](void* ctx, const char* src, const char* dest) {
+      return static_cast<Epub*>(ctx)->extractItemToFile(src, dest);
+    });
+    epub->setupCacheDir();
+    if (!CLIPPINGS.loadForBook(epub->getPath(), epub->getTitle(), epub->getAuthor(), "epub")) {
+      LOG_ERR("CLIP", "Failed to reload clippings for %s", epub->getPath().c_str());
+    }
+  }
+  const std::string title = resp.ok && !resp.positionLabel.empty()
+                                ? (std::string(tr(STR_AI_COMPANION)) + " - " + resp.positionLabel)
+                                : std::string(tr(STR_AI_COMPANION));
+  const std::string& body = resp.ok ? resp.answer : resp.errorMessage;
+  if (resp.ok || body.size() > 140) {
+    auto viewer = makeUniqueNoThrow<DictionaryDefinitionActivity>(renderer, mappedInput, title, body,
+                                                                  /*htmlDefinition=*/false);
+    if (viewer) {
+      startActivityForResult(std::move(viewer), [this](const ActivityResult&) { requestUpdate(); });
+      return;
+    }
+    LOG_ERR("COMPANION", "OOM: DictionaryDefinitionActivity");
+  }
+  const char* okOpts[] = {tr(STR_OK_BUTTON)};
+  companionPopup.showMessage(title.c_str(), body.c_str(), okOpts, 1, 0, [this](int) { requestUpdate(); });
+  {
+    RenderLock lock;
+    settleOverlayRefresh();
+    companionPopup.render(renderer);
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+  }
 }
 
 void EpubReaderActivity::handleEdgeGesture(MappedInputManager::EdgeGesture gesture, int deltaY) {

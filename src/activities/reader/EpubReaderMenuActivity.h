@@ -32,7 +32,8 @@ class EpubReaderMenuActivity final : public UiListActivity {
     DELETE_CACHE,
     DICTIONARY,
     READING_STATS,
-    TOGGLE_BOOK_SETTINGS
+    TOGGLE_BOOK_SETTINGS,
+    ASK_AI
   };
 
   struct MenuItem {

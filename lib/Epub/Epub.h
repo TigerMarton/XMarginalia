@@ -17,6 +17,7 @@ class ZipFile;
 class Epub {
  public:
   struct SyncMetadata {
+    std::string packageId;
     std::string isbn;
     std::string asin;
     std::string series;
