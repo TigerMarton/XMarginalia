@@ -59,7 +59,7 @@ echo -e "${GREEN}===============================================================
 echo ""
 
 echo -e "${YELLOW}--- 1. Remote Server & SSH / Rsync Target ---${RESET}"
-prompt_val SSH_USER "Remote SSH username" "${USER:-david}"
+prompt_val SSH_USER "Remote SSH username" "${USER:-your-user}"
 prompt_val SSH_HOST "Remote server hostname or IP (e.g. homelab.local or 192.168.1.50)" "your-server.local"
 prompt_val SSH_PORT "Remote SSH port" "22"
 prompt_val REMOTE_STACK_DIR "Remote directory where your LocalAI docker-compose.yml lives" "/opt/localai"

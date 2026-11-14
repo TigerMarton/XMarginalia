@@ -25,10 +25,11 @@ The **Xteink X4 Pro**, **Seeed reTerminal Sticky**, **M5Stack PaperMono / Lite**
 devices with an 800x480 panel (480x800 portrait on Picco), capacitive touch and physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
-XMarginalia (CrossMarginalia) is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **26 games and 8 apps**,
-spaced-repetition flashcards, comics, a read-later queue, and two devices that
-play together with nothing to set up.
+**XMarginalia** (CrossMarginalia) is a new e-reader and tabletop firmware product built as a fork of
+**CrossPoint**, **CrossInk**, and **CrossPlay**. It unifies CrossPoint's EPUB engine, CrossInk's UI themes,
+status bar customization, OPDS browser, reading stats, and typography controls, CrossPlay's **26 games and 8 apps**,
+the **11-mode Tabletop suite**, **BOOX Picco** hardware support, **Nearby File Transfer**, and an optional
+spoiler-free **AI Companion**.
 
 ## Try it without a device
 
@@ -75,7 +76,26 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Hex**          | Join your two edges before they join theirs. No captures, and no draws.      |
 | **Underhand**    | The 2017 cult card game: bribe, sacrifice, dodge the police, summon a god.   |
 | **Wordle**       | Six guesses for the day's word, with every past day in an archive.           |
-| **Tabletop**     | Classic board games and a virtual sandbox with cards, dice and pieces.       |
+| **Tabletop**     | 10 classic board, tile & dice games plus a virtual sandbox, solo/2P/nearby.  |
+
+### Tabletop Suite
+
+**Tabletop** (`src/apps_local/tabletop/`, full rules in [docs/apps/tabletop.md](docs/apps/tabletop.md)) packs 10 competitive games and a 4-tool virtual sandbox into a paginated e-ink lobby:
+
+- **Competitive Games** (Solo AI, 2P Pass-and-Play with 180° table flip on board games, and **PLAY NEARBY** ESP-NOW multiplayer): **Reversi / Othello**, **Mancala / Kalah**, **Nine Men's Morris**, **Onitama**, **Liar's Dice / Perudo**, **Dobutsu Shogi / Catch the Lion**, **Backgammon**, **Santorini**, **Quoridor**, and **Dominoes** (with `[ CONCEAL ]` / `[ PEEK ]` hand privacy).
+- **Tabletop Sandbox**: **Dice Cup** (1–6 dice, D4–D20, hold/lock), **Playing Cards** (52-card deck with secret hand privacy), **Life & Point Counters** (4-player), and a **Freeform 8×8 Token Board**.
+
+### Reader, CrossInk Parity & BOOX Picco
+
+XMarginalia brings CrossPlay up to parity with **CrossPoint** and **CrossInk** while adding **BOOX Picco** compatibility:
+
+- **CrossInk UI & Reader**: CrossInk UI themes, customizable status bar items, OPDS catalog browser, Phase 4 typography/layout and guide dots, reading statistics and streaks with multi-device sync, and a unified controls hierarchy.
+- **Nearby File Transfer (CIFT)**: Send and receive EPUBs and wallpapers directly over ESP-NOW between **Onyx BOOX Picco**, **Xteink X4 Pro**, and **CrossInk** devices (`Send to Nearby Device` / `Receive File`).
+- **BOOX Picco Support**: Native 480×800 portrait layout, hardware toggle switch sleep control, PSRAM display and wolfSSL TLS buffers, and app-only `0xE0000` flashing that preserves the factory `safeboot` recovery partition.
+
+### Spoiler-Free AI Companion
+
+While reading an EPUB, you can select a word/passage for **Who is this?**, **What is this?**, or **Explain**, or open the reader menu for **Where was I?** and **Recap chapter so far**. Queries are strictly gated to text at or before your current page (`anchor_exact` $\rightarrow$ `chapter_progress` $\rightarrow$ `book_progress`), displayed in a paginated viewer using your reader font and line-spacing settings, and backed by the self-hosted [`companion-bridge`](server/companion-bridge/README.md) server and an OpenAI-compatible LLM (such as LocalAI). See [docs/companion.md](docs/companion.md) for how it works, Docker/Caddy setup instructions, and security guidance.
 
 ### Apps
 
@@ -242,6 +262,13 @@ Most of the shelf never touches the network. Of the parts that do:
   opening an article proxies it through [r.jina.ai](https://r.jina.ai) to get
   readable text back, so that service learns what you read. It is a choice, not
   an accident, which is why it is written here.
+- **AI Companion is off until you configure `/.crosspoint/companion.json`.**
+  When enabled, queries send book metadata, your reading position, and the
+  selected/anchor text to your own self-hosted `companion-bridge` server.
+  **Security note:** exposing `companion-bridge` externally to the public
+  internet is risky—prefer keeping it on your LAN or behind a private VPN, and
+  if you front it with a reverse proxy such as Caddy, enforce HTTPS and strong
+  `X-API-Key` authentication (see [docs/companion.md](docs/companion.md)).
 - **Developer Mode is off** until you turn it on. While it is on the device
   will not deep-sleep, and the panel says so.
 
@@ -273,12 +300,11 @@ put together. [docs/README.md](docs/README.md) indexes the rest, including
 
 ## Credit and licence
 
-CrossPlay is MIT, like the project it forks. This repository is a GitHub fork
-of
-[crosspoint-reader/crosspoint-reader](https://github.com/crosspoint-reader/crosspoint-reader),
-shares its commit history, and merges upstream continuously rather than
-re-implementing it. It stands on CrossPoint and the
-[FreeInk SDK](https://freeink.org/); upstream's own README is kept at
+XMarginalia is MIT, like the upstream projects it forks. This repository is a
+fork of the upstream firmwares:
+[CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader),
+**CrossInk**, and **CrossPlay**, and stands on the
+[FreeInk SDK](https://freeink.org/); CrossPoint's own README is kept at
 [docs/crosspoint-readme.md](docs/crosspoint-readme.md).
 
 xkcd comics are by Randall Munroe, [CC BY-NC 2.5](https://xkcd.com/license.html),

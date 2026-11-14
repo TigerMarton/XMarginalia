@@ -23,9 +23,11 @@ Everything above the marker is written by hand.
 
 ### 1.0.0
 
-- XMarginalia v1.0.0: established the standalone CrossMarginalia mainline.
-- Tabletop: added a 10-game classic board and card suite (Mancala, Reversi, Nine Men's Morris, Backgammon, Chinese Checkers, Quoridor, Cribbage, Dominoes, Onitama, and Virtual Tabletop Sandbox) with full Nearby Link play.
-- UI & Reader: brought in CrossInk UI themes, customizable status bar items, and the OPDS catalog browser.
+- **XMarginalia v1.0.0**: established the standalone XMarginalia product, unifying CrossPlay, CrossInk, and CrossPoint with BOOX Picco compatibility.
+- **BOOX Picco**: 480×800 portrait layout, app-only `0xE0000` flashing preserving vendor `safeboot`, PSRAM display and wolfSSL TLS buffers, and hardware toggle switch support.
+- **CrossInk & CrossPoint Parity**: CrossInk UI themes, customizable status bar items, OPDS catalog browser, typography/layout & guide dots, reading statistics & streaks with multi-device sync, unified controls hierarchy, and Nearby File Transfer (ESP-NOW CIFT protocol).
+- **Tabletop**: added a 10-game classic board, tile, and dice suite (**Reversi**, **Mancala**, **Nine Men's Morris**, **Onitama**, **Liar's Dice**, **Dobutsu Shogi**, **Backgammon**, **Santorini**, **Quoridor**, and **Dominoes**) plus **Tabletop Sandbox** (Dice Cup, 52-card Deck, Life/Point Counters, Freeform 8×8 Board) with Solo AI, 2P Pass-and-Play (180° flip), SD persistence, and **PLAY NEARBY** multiplayer.
+- **AI Companion**: added spoiler-free in-book AI queries (**Who is this?**, **What is this?**, **Explain**, **Where was I?**, **Recap chapter so far**) with strict intra-chapter cutoff gating, paginated reader-font viewer, and self-hosted `companion-bridge` server.
 
 ### 1.14.4
 
