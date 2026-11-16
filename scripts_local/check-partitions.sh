@@ -82,6 +82,10 @@ if [ -f ".pio/build/gh_release_x4pro/firmware.factory.bin" ]; then
   echo "  [PASS] gh_release_x4pro factory binary built and verified (to be flashed at 0x0 / 0x10000)"
 fi
 
+if [ -f ".pio/build/gh_release_eego_a4/firmware.factory.bin" ]; then
+  echo "  [PASS] gh_release_eego_a4 factory binary built and verified (to be flashed at 0x0 / 0x10000)"
+fi
+
 echo "===================================================="
 if [ "$ERRORS" -eq 0 ]; then
   echo "RESULT: Partition and flash safety checks PASSED"

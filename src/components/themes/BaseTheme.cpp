@@ -970,11 +970,28 @@ int renderSlot(GfxRenderer& renderer, const uint8_t slot, const BaseTheme::Statu
   return totalWidth;
 }
 
-int drawModularLane(GfxRenderer& renderer, const uint8_t leftSlot, const uint8_t centerSlot, const uint8_t rightSlot,
-                    const int y, const int leftBound, const int rightBound, const BaseTheme::StatusBarContext& ctx,
+int drawModularLane(GfxRenderer& renderer, const uint8_t leftSlot, const uint8_t midLeftSlot, const uint8_t centerSlot,
+                    const uint8_t midRightSlot, const uint8_t rightSlot, const int y, const int leftBound,
+                    const int rightBound, const BaseTheme::StatusBarContext& ctx,
                     const CrossPointSettings::StatusBarSpec& sb, const ThemeMetrics& metrics) {
-  const int leftWidth = renderSlot(renderer, leftSlot, ctx, sb, metrics, leftBound, y, false);
-  const int rightWidth = renderSlot(renderer, rightSlot, ctx, sb, metrics, rightBound, y, true);
+  constexpr int clusterGap = 10;
+  int leftWidth = renderSlot(renderer, leftSlot, ctx, sb, metrics, leftBound, y, false);
+  if (midLeftSlot != CrossPointSettings::STATUS_BAR_SLOT_NONE) {
+    const int x = leftBound + (leftWidth > 0 ? (leftWidth + clusterGap) : 0);
+    const int midWidth = renderSlot(renderer, midLeftSlot, ctx, sb, metrics, x, y, false);
+    if (midWidth > 0) {
+      leftWidth = (leftWidth > 0 ? (leftWidth + clusterGap) : 0) + midWidth;
+    }
+  }
+
+  int rightWidth = renderSlot(renderer, rightSlot, ctx, sb, metrics, rightBound, y, true);
+  if (midRightSlot != CrossPointSettings::STATUS_BAR_SLOT_NONE) {
+    const int x = rightBound - (rightWidth > 0 ? (rightWidth + clusterGap) : 0);
+    const int midWidth = renderSlot(renderer, midRightSlot, ctx, sb, metrics, x, y, true);
+    if (midWidth > 0) {
+      rightWidth = (rightWidth > 0 ? (rightWidth + clusterGap) : 0) + midWidth;
+    }
+  }
 
   if (centerSlot != CrossPointSettings::STATUS_BAR_SLOT_NONE) {
     constexpr int centerPadding = 16;
@@ -1057,7 +1074,8 @@ void BaseTheme::drawModularStatusBar(GfxRenderer& renderer, const StatusBarConte
             : 0;
     const int topTextY =
         orientedMarginTop + ctx.paddingTop + topProgressOffset + 4 + BoardConfig::ACTIVE.statusBarOffsetY;
-    topLeftWidth = drawModularLane(renderer, sb.topLeft, sb.topCenter, sb.topRight, topTextY, leftClusterX,
+    topLeftWidth = drawModularLane(renderer, sb.topLeft, CrossPointSettings::STATUS_BAR_SLOT_NONE, sb.topCenter,
+                                   CrossPointSettings::STATUS_BAR_SLOT_NONE, sb.topRight, topTextY, leftClusterX,
                                    rightClusterX, ctx, sb, metrics);
   }
 
@@ -1065,8 +1083,8 @@ void BaseTheme::drawModularStatusBar(GfxRenderer& renderer, const StatusBarConte
   if (sb.hasBottomTextLane()) {
     const int bottomTextY = screenHeight - UITheme::getInstance().getBottomStatusBarHeight() - orientedMarginBottom -
                             ctx.paddingBottom - 4 + BoardConfig::ACTIVE.statusBarOffsetY - ctx.textYOffset;
-    bottomLeftWidth = drawModularLane(renderer, sb.bottomLeft, sb.bottomCenter, sb.bottomRight, bottomTextY,
-                                      leftClusterX, rightClusterX, ctx, sb, metrics);
+    bottomLeftWidth = drawModularLane(renderer, sb.bottomLeft, sb.bottomMidLeft, sb.bottomCenter, sb.bottomMidRight,
+                                      sb.bottomRight, bottomTextY, leftClusterX, rightClusterX, ctx, sb, metrics);
   }
 
   // Draw Bookmark icon

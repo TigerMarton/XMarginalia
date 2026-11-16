@@ -20,7 +20,9 @@ enum MenuItem {
   ITEM_TOP_CENTER,
   ITEM_TOP_RIGHT,
   ITEM_BOTTOM_LEFT,
+  ITEM_BOTTOM_MID_LEFT,
   ITEM_BOTTOM_CENTER,
+  ITEM_BOTTOM_MID_RIGHT,
   ITEM_BOTTOM_RIGHT,
   ITEM_PROGRESS_BAR,
   ITEM_PROGRESS_BAR_POSITION,
@@ -34,10 +36,11 @@ static_assert(ITEM_COUNT == StatusBarSettingsActivity::MAX_STATUS_BAR_ITEMS,
               "keep StatusBarSettingsActivity::MAX_STATUS_BAR_ITEMS in sync with ITEM_COUNT");
 
 const StrId menuNames[ITEM_COUNT] = {
-    StrId::STR_TOP_BAR_LEFT,    StrId::STR_TOP_BAR_CENTER,        StrId::STR_TOP_BAR_RIGHT,
-    StrId::STR_BOTTOM_BAR_LEFT, StrId::STR_BOTTOM_BAR_CENTER,     StrId::STR_BOTTOM_BAR_RIGHT,
-    StrId::STR_PROGRESS_BAR,    StrId::STR_PROGRESS_BAR_POSITION, StrId::STR_PROGRESS_BAR_THICKNESS,
-    StrId::STR_HIDE_BATTERY,    StrId::STR_RESET_DEFAULT,
+    StrId::STR_TOP_BAR_LEFT,          StrId::STR_TOP_BAR_CENTER,         StrId::STR_TOP_BAR_RIGHT,
+    StrId::STR_BOTTOM_BAR_LEFT,       StrId::STR_BOTTOM_BAR_MID_LEFT,    StrId::STR_BOTTOM_BAR_CENTER,
+    StrId::STR_BOTTOM_BAR_MID_RIGHT,  StrId::STR_BOTTOM_BAR_RIGHT,       StrId::STR_PROGRESS_BAR,
+    StrId::STR_PROGRESS_BAR_POSITION, StrId::STR_PROGRESS_BAR_THICKNESS, StrId::STR_HIDE_BATTERY,
+    StrId::STR_RESET_DEFAULT,
 };
 
 constexpr int SLOT_ITEM_CHOICES = CrossPointSettings::STATUS_BAR_SLOT_ITEM_COUNT;
@@ -128,8 +131,14 @@ void StatusBarSettingsActivity::handleSelection() {
     case ITEM_BOTTOM_LEFT:
       slotCallback(SETTINGS.statusBarBottomLeft);
       return;
+    case ITEM_BOTTOM_MID_LEFT:
+      slotCallback(SETTINGS.statusBarBottomMidLeft);
+      return;
     case ITEM_BOTTOM_CENTER:
       slotCallback(SETTINGS.statusBarBottomCenter);
+      return;
+    case ITEM_BOTTOM_MID_RIGHT:
+      slotCallback(SETTINGS.statusBarBottomMidRight);
       return;
     case ITEM_BOTTOM_RIGHT:
       slotCallback(SETTINGS.statusBarBottomRight);
@@ -165,7 +174,9 @@ void StatusBarSettingsActivity::handleSelection() {
       SETTINGS.statusBarTopCenter = CrossPointSettings::STATUS_BAR_SLOT_NONE;
       SETTINGS.statusBarTopRight = CrossPointSettings::STATUS_BAR_SLOT_NONE;
       SETTINGS.statusBarBottomLeft = CrossPointSettings::STATUS_BAR_SLOT_BATTERY;
+      SETTINGS.statusBarBottomMidLeft = CrossPointSettings::STATUS_BAR_SLOT_NONE;
       SETTINGS.statusBarBottomCenter = CrossPointSettings::STATUS_BAR_SLOT_CHAPTER_TITLE;
+      SETTINGS.statusBarBottomMidRight = CrossPointSettings::STATUS_BAR_SLOT_NONE;
       SETTINGS.statusBarBottomRight = CrossPointSettings::STATUS_BAR_SLOT_PAGE_AND_PERCENT;
       SETTINGS.statusBarProgressBar = CrossPointSettings::STATUS_BAR_PROGRESS_BAR::HIDE_PROGRESS;
       SETTINGS.statusBarProgressBarPosition = CrossPointSettings::STATUS_BAR_PROGRESS_POS_BOTTOM;
@@ -195,8 +206,12 @@ std::string StatusBarSettingsActivity::rowValueText(const int index) {
       return slotName(SETTINGS.statusBarTopRight);
     case ITEM_BOTTOM_LEFT:
       return slotName(SETTINGS.statusBarBottomLeft);
+    case ITEM_BOTTOM_MID_LEFT:
+      return slotName(SETTINGS.statusBarBottomMidLeft);
     case ITEM_BOTTOM_CENTER:
       return slotName(SETTINGS.statusBarBottomCenter);
+    case ITEM_BOTTOM_MID_RIGHT:
+      return slotName(SETTINGS.statusBarBottomMidRight);
     case ITEM_BOTTOM_RIGHT:
       return slotName(SETTINGS.statusBarBottomRight);
     case ITEM_PROGRESS_BAR:

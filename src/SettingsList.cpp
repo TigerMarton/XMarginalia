@@ -209,6 +209,9 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   emit(SettingInfo::Enum(StrId::STR_TILT_PAGE_TURN, &CrossPointSettings::tiltPageTurn,
                          {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_INVERTED}, "tiltPageTurn",
                          StrId::STR_CAT_CONTROLS));
+  emit(SettingInfo::Enum(StrId::STR_TILT_SENSITIVITY, &CrossPointSettings::tiltSensitivity,
+                         {StrId::STR_TILT_LOW, StrId::STR_NORMAL, StrId::STR_TILT_HIGH}, "tiltSensitivity",
+                         StrId::STR_CAT_CONTROLS));
   emit(SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &CrossPointSettings::pwrBtnFootnoteBack,
                            "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS));
   if (!BoardConfig::hasTouch())
@@ -416,9 +419,15 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   emit(SettingInfo::Enum(StrId::STR_BOTTOM_BAR_LEFT, &CrossPointSettings::statusBarBottomLeft,
                          {STATUS_BAR_SLOT_NAMES, STATUS_BAR_SLOT_NAMES + std::size(STATUS_BAR_SLOT_NAMES)},
                          "statusBarBottomLeft", StrId::STR_CUSTOMISE_STATUS_BAR));
+  emit(SettingInfo::Enum(StrId::STR_BOTTOM_BAR_MID_LEFT, &CrossPointSettings::statusBarBottomMidLeft,
+                         {STATUS_BAR_SLOT_NAMES, STATUS_BAR_SLOT_NAMES + std::size(STATUS_BAR_SLOT_NAMES)},
+                         "statusBarBottomMidLeft", StrId::STR_CUSTOMISE_STATUS_BAR));
   emit(SettingInfo::Enum(StrId::STR_BOTTOM_BAR_CENTER, &CrossPointSettings::statusBarBottomCenter,
                          {STATUS_BAR_SLOT_NAMES, STATUS_BAR_SLOT_NAMES + std::size(STATUS_BAR_SLOT_NAMES)},
                          "statusBarBottomCenter", StrId::STR_CUSTOMISE_STATUS_BAR));
+  emit(SettingInfo::Enum(StrId::STR_BOTTOM_BAR_MID_RIGHT, &CrossPointSettings::statusBarBottomMidRight,
+                         {STATUS_BAR_SLOT_NAMES, STATUS_BAR_SLOT_NAMES + std::size(STATUS_BAR_SLOT_NAMES)},
+                         "statusBarBottomMidRight", StrId::STR_CUSTOMISE_STATUS_BAR));
   emit(SettingInfo::Enum(StrId::STR_BOTTOM_BAR_RIGHT, &CrossPointSettings::statusBarBottomRight,
                          {STATUS_BAR_SLOT_NAMES, STATUS_BAR_SLOT_NAMES + std::size(STATUS_BAR_SLOT_NAMES)},
                          "statusBarBottomRight", StrId::STR_CUSTOMISE_STATUS_BAR));

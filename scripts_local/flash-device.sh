@@ -40,7 +40,7 @@ BAUD="460800"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    auto | x4pro | picco)
+    auto | x4pro | picco | eego_a4)
       TARGET="$1"
       shift
       ;;
@@ -156,20 +156,25 @@ PY
 fi
 
 if [ "$TARGET" = "auto" ]; then
-  if [ "$DETECTED_HW" = "picco" ] || [ "$DETECTED_HW" = "x4pro" ]; then
-    TARGET="$DETECTED_HW"
+  if [ "$DETECTED_HW" = "picco" ]; then
+    TARGET="picco"
     echo "==> Auto-selected target: $TARGET"
+  elif [ "$DETECTED_HW" = "x4pro" ]; then
+    echo "error: detected standard app0 partition table (shared by x4pro and eego_a4). Specify 'x4pro' or 'eego_a4' explicitly." >&2
+    exit 1
   else
-    echo "error: could not auto-detect board from partition table. Please specify 'x4pro' or 'picco' explicitly." >&2
+    echo "error: could not auto-detect board from partition table. Please specify 'x4pro', 'picco', or 'eego_a4' explicitly." >&2
     exit 1
   fi
-elif [ "$DETECTED_HW" != "unknown" ] && [ "$DETECTED_HW" != "$TARGET" ]; then
-  echo "=====================================================================" >&2
-  echo "CRITICAL SAFETY ABORT: Connected device has '$DETECTED_HW' partition table," >&2
-  echo "but you requested flashing '$TARGET'!" >&2
-  echo "Refusing to flash to protect vendor partitions / safeboot." >&2
-  echo "=====================================================================" >&2
-  exit 1
+elif [ "$DETECTED_HW" != "unknown" ]; then
+  if [ "$DETECTED_HW" = "picco" ] && [ "$TARGET" != "picco" ]; then
+    echo "CRITICAL SAFETY ABORT: Connected device has 'picco' partition table, cannot flash '$TARGET'!" >&2
+    exit 1
+  fi
+  if [ "$DETECTED_HW" != "picco" ] && [ "$TARGET" = "picco" ]; then
+    echo "CRITICAL SAFETY ABORT: Connected device does not have 'picco' safeboot partition table!" >&2
+    exit 1
+  fi
 fi
 
 if [ "$MODE" = "release" ]; then

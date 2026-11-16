@@ -181,6 +181,8 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
     modeName = "Create Hotspot";
   } else if (mode == NetworkMode::RECEIVE_NEARBY_BOOK) {
     modeName = "Receive Nearby File";
+  } else if (mode == NetworkMode::OPDS_BROWSER) {
+    modeName = "OPDS Browser";
 #if FREEINK_CAP_USB_MSC
   } else if (mode == NetworkMode::USB_DRIVE) {
     modeName = "USB Drive";
@@ -197,6 +199,11 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
 
   if (mode == NetworkMode::RECEIVE_NEARBY_BOOK) {
     activityManager.goToNearbyBookReceive();
+    return;
+  }
+
+  if (mode == NetworkMode::OPDS_BROWSER) {
+    activityManager.goToBrowser();
     return;
   }
 

@@ -289,6 +289,7 @@ inline bool isHiddenOnDevice(const SettingInfo& s) {
     // Tilt page turn needs an IMU with a gyroscope. A failed probe on one boot
     // must not drop the saved value.
     case StrId::STR_TILT_PAGE_TURN:
+    case StrId::STR_TILT_SENSITIVITY:
       return !halTiltSensor.isAvailable();
     // Clock settings need the RTC, as on the device (ClockSettingsActivity).
     case StrId::STR_CLOCK:

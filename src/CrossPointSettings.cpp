@@ -312,6 +312,17 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     needsResave = true;
   }
 
+  if (doc["statusBarBottomMidLeft"].isNull() && doc["statusBarBottomMidRight"].isNull() &&
+      statusBarClock != STATUS_BAR_CLOCK_HIDE) {
+    if (statusBarClock == STATUS_BAR_CLOCK_LEFT && statusBarBottomMidLeft == STATUS_BAR_SLOT_NONE) {
+      statusBarBottomMidLeft = STATUS_BAR_SLOT_CLOCK;
+    } else if (statusBarClock == STATUS_BAR_CLOCK_RIGHT && statusBarBottomMidRight == STATUS_BAR_SLOT_NONE) {
+      statusBarBottomMidRight = STATUS_BAR_SLOT_CLOCK;
+    }
+    statusBarClock = STATUS_BAR_CLOCK_HIDE;
+    needsResave = true;
+  }
+
   if (needsResave) {
     LOG_DBG("CPS", "Resaving settings to update format");
     requestResave();
@@ -328,7 +339,9 @@ CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {
   spec.topCenter = statusBarTopCenter;
   spec.topRight = statusBarTopRight;
   spec.bottomLeft = statusBarBottomLeft;
+  spec.bottomMidLeft = statusBarBottomMidLeft;
   spec.bottomCenter = statusBarBottomCenter;
+  spec.bottomMidRight = statusBarBottomMidRight;
   spec.bottomRight = statusBarBottomRight;
   spec.progressBarPosition = statusBarProgressBarPosition;
 

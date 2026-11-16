@@ -632,6 +632,16 @@ void DictionaryDefinitionActivity::loop() {
     return;
   }
 
+  if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PAGE_TURN &&
+      mappedInput.wasReleased(MappedInputManager::Button::Power)) {
+    if (currentPage + 1 < content.totalPages) {
+      currentPage++;
+      content.selection.valid = false;
+      requestUpdate();
+    }
+    return;
+  }
+
   buttonNavigator.onNext([this, &currentPage] {
     if (currentPage + 1 < content.totalPages) {
       currentPage++;

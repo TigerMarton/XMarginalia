@@ -1,11 +1,12 @@
 #!/bin/bash
-# Build release (or dev) images once for Xteink X4 Pro and/or Onyx BOOX Picco.
+# Build release (or dev) images once for Xteink X4 Pro, Onyx BOOX Picco, and/or EEGO A4.
 #
 # Usage:
-#   ./scripts_local/build-release.sh                # builds both gh_release_x4pro and gh_release_picco
+#   ./scripts_local/build-release.sh                # builds gh_release_x4pro, gh_release_picco, gh_release_eego_a4
 #   ./scripts_local/build-release.sh x4pro          # builds gh_release_x4pro only
 #   ./scripts_local/build-release.sh picco          # builds gh_release_picco only
-#   ./scripts_local/build-release.sh --dev [target] # builds dev env(s) (x4pro / picco) instead of gh_release_*
+#   ./scripts_local/build-release.sh eego_a4        # builds gh_release_eego_a4 only
+#   ./scripts_local/build-release.sh --dev [target] # builds dev env(s) (x4pro / picco / eego_a4) instead of gh_release_*
 #
 # NOTE: PlatformIO wipes unrequested .pio/build/<env> folders on some clean steps,
 # so building "all" (the default) passes both environments in a single `pio run` call.
@@ -38,7 +39,7 @@ while [ $# -gt 0 ]; do
       MODE="release"
       shift
       ;;
-    x4pro | picco | all)
+    x4pro | picco | eego_a4 | all)
       TARGET="$1"
       shift
       ;;
@@ -47,7 +48,7 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     *)
-      echo "error: unknown argument '$1' (expected: x4pro | picco | all | --dev | --release)" >&2
+      echo "error: unknown argument '$1' (expected: x4pro | picco | eego_a4 | all | --dev | --release)" >&2
       exit 2
       ;;
   esac
@@ -56,9 +57,11 @@ done
 if [ "$MODE" = "release" ]; then
   ENV_X4PRO="gh_release_x4pro"
   ENV_PICCO="gh_release_picco"
+  ENV_EEGO="gh_release_eego_a4"
 else
   ENV_X4PRO="x4pro"
   ENV_PICCO="picco"
+  ENV_EEGO="eego_a4"
 fi
 
 ENV_ARGS=()
@@ -69,8 +72,11 @@ case "$TARGET" in
   picco)
     ENV_ARGS=(-e "$ENV_PICCO")
     ;;
+  eego_a4)
+    ENV_ARGS=(-e "$ENV_EEGO")
+    ;;
   all)
-    ENV_ARGS=(-e "$ENV_X4PRO" -e "$ENV_PICCO")
+    ENV_ARGS=(-e "$ENV_X4PRO" -e "$ENV_PICCO" -e "$ENV_EEGO")
     ;;
 esac
 
@@ -78,7 +84,7 @@ echo "==> Building ${ENV_ARGS[*]} in $REPO ..."
 PLATFORMIO_CORE_DIR="$PIO_CORE" "$PIO_BIN" run "${ENV_ARGS[@]}"
 
 echo ""
-echo "==> Running Dual-Device Partition Safety Check ..."
+echo "==> Running Multi-Device Partition Safety Check ..."
 "$SCRIPTS_DIR/check-partitions.sh"
 
 echo ""
@@ -89,8 +95,11 @@ fi
 if [ "$TARGET" = "picco" ] || [ "$TARGET" = "all" ]; then
   ls -lh ".pio/build/$ENV_PICCO/firmware.bin" 2>/dev/null || true
 fi
+if [ "$TARGET" = "eego_a4" ] || [ "$TARGET" = "all" ]; then
+  ls -lh ".pio/build/$ENV_EEGO/firmware.bin" ".pio/build/$ENV_EEGO/firmware.factory.bin" 2>/dev/null || true
+fi
 echo ""
 echo "Flash without rebuilding using:"
-echo "  ./scripts_local/flash-device.sh           # auto-detects plugged-in X4 Pro or Picco"
 echo "  ./scripts_local/flash-device.sh x4pro     # flashes X4 Pro"
 echo "  ./scripts_local/flash-device.sh picco     # flashes BOOX Picco (0xE0000 app-only)"
+echo "  ./scripts_local/flash-device.sh eego_a4   # flashes EEGO A4"

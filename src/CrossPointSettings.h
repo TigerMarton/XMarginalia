@@ -289,6 +289,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   enum READER_MENU_STYLE { READER_MENU_LIST = 0, READER_MENU_TOOLBAR = 1, READER_MENU_STYLE_COUNT };
 
   enum TILT_PAGE_TURN { TILT_OFF = 0, TILT_NORMAL = 1, TILT_NVERTED = 2, TILT_PAGE_TURN_COUNT };
+  enum TILT_SENSITIVITY { TILT_SENS_LOW = 0, TILT_SENS_NORMAL = 1, TILT_SENS_HIGH = 2, TILT_SENS_COUNT };
   enum VIBRATION { VIBRATION_TOUCH = 0, VIBRATION_TOUCH_PAGE = 1, VIBRATION_OFF = 2 };
   uint8_t vibration = VIBRATION_OFF;
   enum HAPTIC_INTENSITY { HAPTIC_LOW = 0, HAPTIC_MEDIUM = 1, HAPTIC_HIGH = 2 };
@@ -342,7 +343,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t statusBarTopCenter = STATUS_BAR_SLOT_NONE;
   uint8_t statusBarTopRight = STATUS_BAR_SLOT_NONE;
   uint8_t statusBarBottomLeft = STATUS_BAR_SLOT_BATTERY;
+  uint8_t statusBarBottomMidLeft = STATUS_BAR_SLOT_NONE;
   uint8_t statusBarBottomCenter = STATUS_BAR_SLOT_CHAPTER_TITLE;
+  uint8_t statusBarBottomMidRight = STATUS_BAR_SLOT_NONE;
   uint8_t statusBarBottomRight = STATUS_BAR_SLOT_PAGE_AND_PERCENT;
   uint8_t statusBarProgressBarPosition = STATUS_BAR_PROGRESS_POS_BOTTOM;
   // LEGACY, kept for migration only: quarter-hour UTC offset biased by 48
@@ -484,8 +487,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t triviaShowUsCentric = 0;
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;
-  // Tilt-based page turning (X3 only — requires QMI8658 IMU)
+  // Tilt-based page turning (requires QMI8658 IMU)
   uint8_t tiltPageTurn = TILT_OFF;
+  uint8_t tiltSensitivity = TILT_SENS_NORMAL;
   // Master reader-touch toggle on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_ON;
   // Which gestures turn the page in each direction (PAGE_TURN_GESTURE).
@@ -571,7 +575,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     uint8_t topCenter = STATUS_BAR_SLOT_NONE;
     uint8_t topRight = STATUS_BAR_SLOT_NONE;
     uint8_t bottomLeft = STATUS_BAR_SLOT_BATTERY;
+    uint8_t bottomMidLeft = STATUS_BAR_SLOT_NONE;
     uint8_t bottomCenter = STATUS_BAR_SLOT_CHAPTER_TITLE;
+    uint8_t bottomMidRight = STATUS_BAR_SLOT_NONE;
     uint8_t bottomRight = STATUS_BAR_SLOT_PAGE_AND_PERCENT;
 
     uint8_t progressBarMode = HIDE_PROGRESS;  // STATUS_BAR_PROGRESS_BAR
@@ -593,7 +599,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
       return topLeft != STATUS_BAR_SLOT_NONE || topCenter != STATUS_BAR_SLOT_NONE || topRight != STATUS_BAR_SLOT_NONE;
     }
     bool hasBottomTextLane() const {
-      return bottomLeft != STATUS_BAR_SLOT_NONE || bottomCenter != STATUS_BAR_SLOT_NONE ||
+      return bottomLeft != STATUS_BAR_SLOT_NONE || bottomMidLeft != STATUS_BAR_SLOT_NONE ||
+             bottomCenter != STATUS_BAR_SLOT_NONE || bottomMidRight != STATUS_BAR_SLOT_NONE ||
              bottomRight != STATUS_BAR_SLOT_NONE;
     }
     bool hasTopBar() const {
@@ -606,20 +613,23 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     bool showsChapterTitle() const {
       return topLeft == STATUS_BAR_SLOT_CHAPTER_TITLE || topCenter == STATUS_BAR_SLOT_CHAPTER_TITLE ||
              topRight == STATUS_BAR_SLOT_CHAPTER_TITLE || bottomLeft == STATUS_BAR_SLOT_CHAPTER_TITLE ||
-             bottomCenter == STATUS_BAR_SLOT_CHAPTER_TITLE || bottomRight == STATUS_BAR_SLOT_CHAPTER_TITLE ||
+             bottomMidLeft == STATUS_BAR_SLOT_CHAPTER_TITLE || bottomCenter == STATUS_BAR_SLOT_CHAPTER_TITLE ||
+             bottomMidRight == STATUS_BAR_SLOT_CHAPTER_TITLE || bottomRight == STATUS_BAR_SLOT_CHAPTER_TITLE ||
              titleMode == STATUS_BAR_TITLE::CHAPTER_TITLE;
     }
     bool showsBookTitle() const {
       return topLeft == STATUS_BAR_SLOT_BOOK_TITLE || topCenter == STATUS_BAR_SLOT_BOOK_TITLE ||
              topRight == STATUS_BAR_SLOT_BOOK_TITLE || bottomLeft == STATUS_BAR_SLOT_BOOK_TITLE ||
-             bottomCenter == STATUS_BAR_SLOT_BOOK_TITLE || bottomRight == STATUS_BAR_SLOT_BOOK_TITLE ||
+             bottomMidLeft == STATUS_BAR_SLOT_BOOK_TITLE || bottomCenter == STATUS_BAR_SLOT_BOOK_TITLE ||
+             bottomMidRight == STATUS_BAR_SLOT_BOOK_TITLE || bottomRight == STATUS_BAR_SLOT_BOOK_TITLE ||
              titleMode == STATUS_BAR_TITLE::BOOK_TITLE;
     }
     bool showsTitle() const { return showsChapterTitle() || showsBookTitle(); }
     bool showsClock() const {
       return topLeft == STATUS_BAR_SLOT_CLOCK || topCenter == STATUS_BAR_SLOT_CLOCK ||
              topRight == STATUS_BAR_SLOT_CLOCK || bottomLeft == STATUS_BAR_SLOT_CLOCK ||
-             bottomCenter == STATUS_BAR_SLOT_CLOCK || bottomRight == STATUS_BAR_SLOT_CLOCK ||
+             bottomMidLeft == STATUS_BAR_SLOT_CLOCK || bottomCenter == STATUS_BAR_SLOT_CLOCK ||
+             bottomMidRight == STATUS_BAR_SLOT_CLOCK || bottomRight == STATUS_BAR_SLOT_CLOCK ||
              clockMode != STATUS_BAR_CLOCK_HIDE;
     }
     // Visibility of any status bar text lane.

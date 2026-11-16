@@ -1293,7 +1293,26 @@ void loop() {
 
   // After the exclusive-storage return: it saves settings to the SD card.
   handleSlideSwitch();
-  halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
+  halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity(),
+                       SETTINGS.tiltSensitivity);
+
+  // Picco recovery: pressing Up + Down outside the reader restores reader touch controls
+  // in case touch was disabled accidentally.
+  static bool piccoTouchRecoverLatch = false;
+  if (BoardConfig::isPicco() && !activityManager.isReaderActivity() &&
+      SETTINGS.touchReaderControls == CrossPointSettings::TOUCH_READER_OFF &&
+      SETTINGS.slideSwitchAction != CrossPointSettings::SLIDE_SWITCH_TOUCH_CONTROLS &&
+      gpio.isPressed(HalGPIO::BTN_UP) && gpio.isPressed(HalGPIO::BTN_DOWN)) {
+    if (!piccoTouchRecoverLatch) {
+      piccoTouchRecoverLatch = true;
+      SETTINGS.touchReaderControls = CrossPointSettings::TOUCH_READER_ON;
+      SETTINGS.saveToFile();
+      activityManager.requestUpdate();
+      LOG_INF("CTRL", "Picco Up+Down restored reader touch controls");
+    }
+  } else {
+    piccoTouchRecoverLatch = false;
+  }
 
   // Under the render lock, so a step never overlaps the themes' gauge reads.
   static bool gaugeCapacityPending = true;

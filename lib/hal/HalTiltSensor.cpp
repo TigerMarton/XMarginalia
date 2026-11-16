@@ -67,7 +67,8 @@ bool HalTiltSensor::deepSleep() {
   return true;
 }
 
-void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const bool inReader) {
+void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const bool inReader,
+                           const uint8_t sensitivity) {
   if (!_available) {
     return;
   }
@@ -130,14 +131,18 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
     }
   } else {
     // Check for new tilt gesture (with cooldown)
+    const float thresholdDps =
+        (sensitivity == CrossPointTiltSensitivity::SENS_LOW)
+            ? RATE_THRESHOLD_LOW_DPS
+            : ((sensitivity == CrossPointTiltSensitivity::SENS_HIGH) ? RATE_THRESHOLD_HIGH_DPS : RATE_THRESHOLD_DPS);
     if ((now - _lastTiltMs) >= COOLDOWN_MS) {
-      if (tiltAxis > RATE_THRESHOLD_DPS) {
+      if (tiltAxis > thresholdDps) {
         _tiltForwardEvent = true;
         _hadActivity = true;
         _inTilt = true;
         _lastTiltMs = now;
         LOG_INF("GYR", "Forward Trigger=(%.1f) dps", tiltAxis);
-      } else if (tiltAxis < -RATE_THRESHOLD_DPS) {
+      } else if (tiltAxis < -thresholdDps) {
         _tiltBackEvent = true;
         _hadActivity = true;
         _inTilt = true;

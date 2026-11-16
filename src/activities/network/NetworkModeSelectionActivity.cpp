@@ -15,14 +15,14 @@ constexpr NetworkMode menuModes[NetworkModeSelectionActivity::MENU_ITEM_COUNT] =
 #if FREEINK_CAP_USB_MSC
     NetworkMode::USB_DRIVE,
 #endif
-    NetworkMode::RECEIVE_NEARBY_BOOK,
+    NetworkMode::RECEIVE_NEARBY_BOOK, NetworkMode::OPDS_BROWSER,
 };
 constexpr StrId menuItems[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
     StrId::STR_JOIN_NETWORK,        StrId::STR_CALIBRE_WIRELESS, StrId::STR_CREATE_HOTSPOT,
 #if FREEINK_CAP_USB_MSC
     StrId::STR_USB_DRIVE,
 #endif
-    StrId::STR_RECEIVE_NEARBY_BOOK,
+    StrId::STR_RECEIVE_NEARBY_BOOK, StrId::STR_OPDS_BROWSER,
 };
 constexpr StrId menuDescs[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
     StrId::STR_JOIN_DESC,
@@ -32,13 +32,14 @@ constexpr StrId menuDescs[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
     StrId::STR_USB_DRIVE_DESC,
 #endif
     StrId::STR_RECEIVE_NEARBY_BOOK_DESC,
+    StrId::STR_OPDS_BROWSER_DESC,
 };
 constexpr UIIcon menuIcons[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
     UIIcon::Wifi,     UIIcon::Library, UIIcon::Hotspot,
 #if FREEINK_CAP_USB_MSC
     UIIcon::Usb,
 #endif
-    UIIcon::Transfer,
+    UIIcon::Transfer, UIIcon::Library,
 };
 }  // namespace
 

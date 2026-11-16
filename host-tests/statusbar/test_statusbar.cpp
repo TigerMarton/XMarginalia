@@ -29,18 +29,16 @@ enum STATUS_BAR_PROGRESS_POSITION : uint8_t {
   STATUS_BAR_PROGRESS_POS_COUNT
 };
 
-enum STATUS_BAR_PROGRESS_BAR : uint8_t {
-  HIDE_PROGRESS = 0,
-  BOOK_PROGRESS = 1,
-  CHAPTER_PROGRESS = 2
-};
+enum STATUS_BAR_PROGRESS_BAR : uint8_t { HIDE_PROGRESS = 0, BOOK_PROGRESS = 1, CHAPTER_PROGRESS = 2 };
 
 struct StatusBarSpec {
   uint8_t topLeft = STATUS_BAR_SLOT_NONE;
   uint8_t topCenter = STATUS_BAR_SLOT_NONE;
   uint8_t topRight = STATUS_BAR_SLOT_NONE;
   uint8_t bottomLeft = STATUS_BAR_SLOT_BATTERY;
+  uint8_t bottomMidLeft = STATUS_BAR_SLOT_NONE;
   uint8_t bottomCenter = STATUS_BAR_SLOT_CHAPTER_TITLE;
+  uint8_t bottomMidRight = STATUS_BAR_SLOT_NONE;
   uint8_t bottomRight = STATUS_BAR_SLOT_PAGE_AND_PERCENT;
 
   uint8_t progressBarMode = HIDE_PROGRESS;
@@ -58,11 +56,11 @@ struct StatusBarSpec {
   uint8_t clockMode = 0;
 
   bool hasTopTextLane() const {
-    return topLeft != STATUS_BAR_SLOT_NONE || topCenter != STATUS_BAR_SLOT_NONE ||
-           topRight != STATUS_BAR_SLOT_NONE;
+    return topLeft != STATUS_BAR_SLOT_NONE || topCenter != STATUS_BAR_SLOT_NONE || topRight != STATUS_BAR_SLOT_NONE;
   }
   bool hasBottomTextLane() const {
-    return bottomLeft != STATUS_BAR_SLOT_NONE || bottomCenter != STATUS_BAR_SLOT_NONE ||
+    return bottomLeft != STATUS_BAR_SLOT_NONE || bottomMidLeft != STATUS_BAR_SLOT_NONE ||
+           bottomCenter != STATUS_BAR_SLOT_NONE || bottomMidRight != STATUS_BAR_SLOT_NONE ||
            bottomRight != STATUS_BAR_SLOT_NONE;
   }
   bool hasTopBar() const {
@@ -75,46 +73,44 @@ struct StatusBarSpec {
   bool showsChapterTitle() const {
     return topLeft == STATUS_BAR_SLOT_CHAPTER_TITLE || topCenter == STATUS_BAR_SLOT_CHAPTER_TITLE ||
            topRight == STATUS_BAR_SLOT_CHAPTER_TITLE || bottomLeft == STATUS_BAR_SLOT_CHAPTER_TITLE ||
-           bottomCenter == STATUS_BAR_SLOT_CHAPTER_TITLE || bottomRight == STATUS_BAR_SLOT_CHAPTER_TITLE ||
+           bottomMidLeft == STATUS_BAR_SLOT_CHAPTER_TITLE || bottomCenter == STATUS_BAR_SLOT_CHAPTER_TITLE ||
+           bottomMidRight == STATUS_BAR_SLOT_CHAPTER_TITLE || bottomRight == STATUS_BAR_SLOT_CHAPTER_TITLE ||
            titleMode == 1;
   }
   bool showsBookTitle() const {
     return topLeft == STATUS_BAR_SLOT_BOOK_TITLE || topCenter == STATUS_BAR_SLOT_BOOK_TITLE ||
            topRight == STATUS_BAR_SLOT_BOOK_TITLE || bottomLeft == STATUS_BAR_SLOT_BOOK_TITLE ||
-           bottomCenter == STATUS_BAR_SLOT_BOOK_TITLE || bottomRight == STATUS_BAR_SLOT_BOOK_TITLE ||
-           titleMode == 2;
+           bottomMidLeft == STATUS_BAR_SLOT_BOOK_TITLE || bottomCenter == STATUS_BAR_SLOT_BOOK_TITLE ||
+           bottomMidRight == STATUS_BAR_SLOT_BOOK_TITLE || bottomRight == STATUS_BAR_SLOT_BOOK_TITLE || titleMode == 2;
   }
-  bool showsTitle() const {
-    return showsChapterTitle() || showsBookTitle();
-  }
+  bool showsTitle() const { return showsChapterTitle() || showsBookTitle(); }
   bool showsClock() const {
     return topLeft == STATUS_BAR_SLOT_CLOCK || topCenter == STATUS_BAR_SLOT_CLOCK ||
            topRight == STATUS_BAR_SLOT_CLOCK || bottomLeft == STATUS_BAR_SLOT_CLOCK ||
-           bottomCenter == STATUS_BAR_SLOT_CLOCK || bottomRight == STATUS_BAR_SLOT_CLOCK ||
-           clockMode != 0;
+           bottomMidLeft == STATUS_BAR_SLOT_CLOCK || bottomCenter == STATUS_BAR_SLOT_CLOCK ||
+           bottomMidRight == STATUS_BAR_SLOT_CLOCK || bottomRight == STATUS_BAR_SLOT_CLOCK || clockMode != 0;
   }
   bool textLaneVisible(bool /*clockAvailable*/) const {
-    return hasBottomTextLane() || hasTopTextLane() || showChapterPageCount || showBookProgressPercent ||
-           showBattery || showsTitle();
+    return hasBottomTextLane() || hasTopTextLane() || showChapterPageCount || showBookProgressPercent || showBattery ||
+           showsTitle();
   }
 };
 
 }  // namespace CrossPointSettings
 
 static int checks = 0;
-#define CHECK(cond)                                                 \
-  do {                                                              \
-    checks++;                                                       \
-    if (!(cond)) {                                                  \
+#define CHECK(cond)                                                    \
+  do {                                                                 \
+    checks++;                                                          \
+    if (!(cond)) {                                                     \
       fprintf(stderr, "FAIL: %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-      return 1;                                                     \
-    }                                                               \
+      return 1;                                                        \
+    }                                                                  \
   } while (0)
 
 // Standalone formatSlotText for verification
-void formatSlotText(char* buf, size_t bufSize, uint8_t slot, int currentPage, int pageCount,
-                    float bookProgress, int currentBookPage, int bookPageCount,
-                    const char* bookTitle, const char* chapterTitle,
+void formatSlotText(char* buf, size_t bufSize, uint8_t slot, int currentPage, int pageCount, float bookProgress,
+                    int currentBookPage, int bookPageCount, const char* bookTitle, const char* chapterTitle,
                     int timeToChapterMin, int timeToBookMin) {
   buf[0] = '\0';
   switch (slot) {
@@ -230,52 +226,52 @@ int main() {
   char buf[64];
 
   // Book title
-  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_BOOK_TITLE,
-                 1, 10, 50.0f, 1, 100, "Moby Dick", "Chapter 1", -1, -1);
+  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_BOOK_TITLE, 1, 10, 50.0f, 1, 100, "Moby Dick",
+                 "Chapter 1", -1, -1);
   CHECK(strcmp(buf, "Moby Dick") == 0);
 
   // Chapter title
-  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_CHAPTER_TITLE,
-                 1, 10, 50.0f, 1, 100, "Moby Dick", "Loomings", -1, -1);
+  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_CHAPTER_TITLE, 1, 10, 50.0f, 1, 100, "Moby Dick",
+                 "Loomings", -1, -1);
   CHECK(strcmp(buf, "Loomings") == 0);
 
   // Chapter page
-  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_CHAPTER_PAGE,
-                 5, 25, 20.0f, 50, 250, "Moby Dick", "Loomings", -1, -1);
+  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_CHAPTER_PAGE, 5, 25, 20.0f, 50, 250, "Moby Dick",
+                 "Loomings", -1, -1);
   CHECK(strcmp(buf, "5/25") == 0);
 
   // Book page
-  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_BOOK_PAGE,
-                 5, 25, 20.0f, 50, 250, "Moby Dick", "Loomings", -1, -1);
+  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_BOOK_PAGE, 5, 25, 20.0f, 50, 250, "Moby Dick",
+                 "Loomings", -1, -1);
   CHECK(strcmp(buf, "50/250") == 0);
 
   // Book percent
-  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_BOOK_PERCENT,
-                 5, 25, 20.4f, 50, 250, "Moby Dick", "Loomings", -1, -1);
+  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_BOOK_PERCENT, 5, 25, 20.4f, 50, 250, "Moby Dick",
+                 "Loomings", -1, -1);
   CHECK(strcmp(buf, "20%") == 0);
 
   // Page and percent
-  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_PAGE_AND_PERCENT,
-                 5, 25, 20.4f, 50, 250, "Moby Dick", "Loomings", -1, -1);
+  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_PAGE_AND_PERCENT, 5, 25, 20.4f, 50, 250,
+                 "Moby Dick", "Loomings", -1, -1);
   CHECK(strcmp(buf, "5/25  20%") == 0);
 
   // Time left in chapter (< 60m)
-  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_TIME_LEFT_CHAPTER,
-                 5, 25, 20.0f, 50, 250, "Moby Dick", "Loomings", 18, 140);
+  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_TIME_LEFT_CHAPTER, 5, 25, 20.0f, 50, 250,
+                 "Moby Dick", "Loomings", 18, 140);
   CHECK(strcmp(buf, "18m left") == 0);
 
   // Time left in book (>= 60m)
-  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_TIME_LEFT_BOOK,
-                 5, 25, 20.0f, 50, 250, "Moby Dick", "Loomings", 18, 140);
+  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_TIME_LEFT_BOOK, 5, 25, 20.0f, 50, 250,
+                 "Moby Dick", "Loomings", 18, 140);
   CHECK(strcmp(buf, "2h 20m left") == 0);
 
   // None slot produces empty
-  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_NONE,
-                 5, 25, 20.0f, 50, 250, "Moby Dick", "Loomings", 18, 140);
+  formatSlotText(buf, sizeof(buf), CrossPointSettings::STATUS_BAR_SLOT_NONE, 5, 25, 20.0f, 50, 250, "Moby Dick",
+                 "Loomings", 18, 140);
   CHECK(strcmp(buf, "") == 0);
 
   // 5. Title & Clock resolution
-  CHECK(defSpec.showsTitle() == true); // center is chapter title
+  CHECK(defSpec.showsTitle() == true);  // center is chapter title
   CHECK(defSpec.showsChapterTitle() == true);
   CHECK(defSpec.showsBookTitle() == false);
   defSpec.topLeft = CrossPointSettings::STATUS_BAR_SLOT_BOOK_TITLE;
@@ -283,6 +279,20 @@ int main() {
   CHECK(defSpec.showsClock() == false);
   defSpec.topRight = CrossPointSettings::STATUS_BAR_SLOT_CLOCK;
   CHECK(defSpec.showsClock() == true);
+
+  // 6. Bottom mid-left and mid-right slots activate lane and resolve flags
+  CrossPointSettings::StatusBarSpec midSpec;
+  midSpec.bottomLeft = CrossPointSettings::STATUS_BAR_SLOT_NONE;
+  midSpec.bottomCenter = CrossPointSettings::STATUS_BAR_SLOT_NONE;
+  midSpec.bottomRight = CrossPointSettings::STATUS_BAR_SLOT_NONE;
+  CHECK(midSpec.hasBottomTextLane() == false);
+  midSpec.bottomMidLeft = CrossPointSettings::STATUS_BAR_SLOT_CLOCK;
+  CHECK(midSpec.hasBottomTextLane() == true);
+  CHECK(midSpec.showsClock() == true);
+  midSpec.bottomMidLeft = CrossPointSettings::STATUS_BAR_SLOT_NONE;
+  midSpec.bottomMidRight = CrossPointSettings::STATUS_BAR_SLOT_BOOK_TITLE;
+  CHECK(midSpec.hasBottomTextLane() == true);
+  CHECK(midSpec.showsBookTitle() == true);
 
   printf("%d checks, 0 failed\n", checks);
   return 0;
