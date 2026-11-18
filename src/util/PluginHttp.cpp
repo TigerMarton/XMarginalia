@@ -2,6 +2,7 @@
 
 #include <HalStorage.h>
 #include <Logging.h>
+#include <ObfuscationUtils.h>
 #include <SecureHttpClient.h>
 
 #include <algorithm>
@@ -208,8 +209,29 @@ void loadConfigFile(const std::string& file, Headers& out) {
   if (deserializeJson(doc, raw) != DeserializationError::Ok) return;
   const JsonObjectConst fields = doc.as<JsonObjectConst>();
   out.reserve(fields.size());
+  static constexpr const char OBF_SUFFIX[] = "_obf";
+  static constexpr size_t OBF_SUFFIX_LEN = sizeof(OBF_SUFFIX) - 1;
+  // Decode hardware-bound *_obf entries first so they override any legacy
+  // plaintext sibling key in the same JSON object.
   for (JsonPairConst kv : fields) {
-    out.emplace_back(kv.key().c_str(), variantToString(kv.value()));
+    const std::string key = kv.key().c_str();
+    if (key.size() <= OBF_SUFFIX_LEN || key.compare(key.size() - OBF_SUFFIX_LEN, OBF_SUFFIX_LEN, OBF_SUFFIX) != 0) {
+      continue;
+    }
+    const std::string baseKey = key.substr(0, key.size() - OBF_SUFFIX_LEN);
+    const std::string encoded = variantToString(kv.value());
+    bool ok = false;
+    std::string decoded = obfuscation::deobfuscateFromBase64(encoded.c_str(), &ok);
+    if (ok) out.emplace_back(baseKey, std::move(decoded));
+  }
+  for (JsonPairConst kv : fields) {
+    const std::string key = kv.key().c_str();
+    if (key.size() > OBF_SUFFIX_LEN && key.compare(key.size() - OBF_SUFFIX_LEN, OBF_SUFFIX_LEN, OBF_SUFFIX) == 0) {
+      continue;
+    }
+    const bool overridden =
+        std::any_of(out.begin(), out.end(), [&](const auto& existing) { return existing.first == key; });
+    if (!overridden) out.emplace_back(key, variantToString(kv.value()));
   }
 }
 

@@ -41,6 +41,7 @@
 #include "util/PluginPickerLayout.h"
 #include "util/QrUtils.h"
 #include "util/StringUtils.h"
+#include "util/TaskWatchdog.h"
 #include "util/UrlUtils.h"
 
 namespace fui = freeink::ui;
@@ -52,7 +53,7 @@ using pluginhttp::urlEncodeQuery;
 using pluginhttp::variantToString;
 
 namespace {
-constexpr size_t MAX_MANIFEST_SIZE = 8 * 1024;
+constexpr size_t MAX_MANIFEST_SIZE = 12 * 1024;
 // In-DRAM responses (auth, download-url hops) are small; the cap bounds a
 // misbehaving server, not normal use.
 constexpr size_t MAX_API_RESPONSE = 48 * 1024;
@@ -295,24 +296,79 @@ bool PluginCatalogActivity::loadManifest() {
   manifest.listsUrlPath = listFields["url"] | "url";
   manifest.listsIdPath = listFields["id"] | "id";
   manifest.listsRequiresPath = listFields["requires"] | "requires";
-  manifest.browseLists.reserve(browse["lists"].size());
-  for (JsonVariantConst l : browse["lists"].as<JsonArrayConst>()) {
-    if (!matchesListRequirements(l["requires"])) continue;
-    Manifest::BrowseList entry;
+  JsonVariantConst listsFilter = browse["lists_filter"];
+  manifest.listsMatchField = listsFilter["field"] | "";
+  manifest.listsMatchValue = listsFilter["equals"] | "";
+
+  const auto readRequireUrl = [](JsonVariantConst node, const int8_t fallback) -> int8_t {
+    if (!node["require_url"].isNull()) return (node["require_url"] | false) ? 1 : 0;
+    for (JsonVariantConst reqField : node["require_fields"].as<JsonArrayConst>()) {
+      const char* name = reqField.as<const char*>();
+      if (name && strcmp(name, "url") == 0) return 1;
+    }
+    return fallback;
+  };
+  const auto readListSpec = [&](JsonVariantConst node, Manifest::ListSpec& out) {
+    out.url = node["url"] | "";
+    out.body = node["body"] | "";
+    out.itemsPath = node["items"] | "";
+    JsonVariantConst f = node["fields"];
+    out.titlePath = f["title"] | "";
+    out.authorPath = f["author"] | "";
+    out.idPath = f["id"] | "";
+    out.urlPath = f["url"] | "";
+    out.descriptionPath = f["description"] | "";
+    out.requireUrl = readRequireUrl(node, -1);
+  };
+  const auto readBrowseList = [&](JsonVariantConst l, Manifest::BrowseList& entry) {
     entry.title = l["title"] | "";
     entry.url = l["url"] | "";
     entry.id = variantToString(l["id"]);
     entry.body = l["body"] | "";
+    entry.itemsPath = l["items"] | "";
+    JsonVariantConst f = l["fields"];
+    entry.titlePath = f["title"] | "";
+    entry.authorPath = f["author"] | "";
+    entry.idPath = f["id"] | "";
+    entry.urlPath = f["url"] | "";
+    entry.descriptionPath = f["description"] | "";
+    entry.requireUrl = readRequireUrl(l, -1);
+    entry.searchPrompt = l["search_prompt"] | false;
+    if (!l["search"].isNull()) readListSpec(l["search"], entry.search);
+    if (!l["drill"].isNull()) readListSpec(l["drill"], entry.drill);
     JsonVariantConst notice = l["notice"];
     entry.noticeTitle = notice["title"] | "";
     entry.noticeMessage = notice["message"] | "";
     entry.noticeConfirm = notice["confirm"] | "";
     entry.noticeCancel = notice["cancel"] | "";
+  };
+
+  manifest.browseLists.reserve(browse["lists"].size());
+  for (JsonVariantConst l : browse["lists"].as<JsonArrayConst>()) {
+    if (!matchesListRequirements(l["requires"])) continue;
+    Manifest::BrowseList entry;
+    readBrowseList(l, entry);
     if (!entry.title.empty()) manifest.browseLists.push_back(std::move(entry));
   }
+  manifest.listViews.reserve(browse["list_views"].size());
+  for (JsonVariantConst v : browse["list_views"].as<JsonArrayConst>()) {
+    if (!matchesListRequirements(v["requires"])) continue;
+    Manifest::BrowseList view;
+    readBrowseList(v, view);
+    if (!view.title.empty()) manifest.listViews.push_back(std::move(view));
+  }
+  manifest.requireUrl = readRequireUrl(browse, 0) == 1;
   manifest.fixedListCount = manifest.browseLists.size();
-  manifest.searchUrl = browse["search"]["url"] | "";
-  manifest.searchBody = browse["search"]["body"] | "";
+  JsonVariantConst search = browse["search"];
+  manifest.searchUrl = search["url"] | "";
+  manifest.searchBody = search["body"] | "";
+  manifest.searchItemsPath = search["items"] | "";
+  JsonVariantConst searchFields = search["fields"];
+  manifest.searchTitlePath = searchFields["title"] | "";
+  manifest.searchAuthorPath = searchFields["author"] | "";
+  manifest.searchIdPath = searchFields["id"] | "";
+  manifest.searchUrlPath = searchFields["url"] | "";
+  manifest.searchDescriptionPath = searchFields["description"] | "";
   manifest.xmlItem = browse["item"] | "";
   manifest.xmlContainer = browse["container_element"] | "";
   manifest.xmlSkipSelf = browse["skip_self"] | false;
@@ -369,7 +425,7 @@ bool PluginCatalogActivity::loadBrowseListIndex(int& status) {
                                response, MAX_BROWSE_LIST_INDEX_RESPONSE);
   };
   status = run();
-  // Same policy as browsing: an expired password-grant token is minted again once.
+  // Same policy as browsing: an expired password-grant token is refreshed once.
   if ((status == 401 || status == 403) && manifest.hasPasswordGrant()) {
     response = String();  // the error body is not needed while a token is minted
     if (refreshCredentialToken()) status = run();
@@ -392,13 +448,18 @@ bool PluginCatalogActivity::loadBrowseListIndex(int& status) {
   }
 
   manifest.browseLists.resize(manifest.fixedListCount);
-  manifest.browseLists.reserve(manifest.fixedListCount + std::min(lists.size(), MAX_BROWSE_LISTS));
+  std::vector<Manifest::BrowseList> fetchedLists;
+  fetchedLists.reserve(std::min(lists.size(), MAX_BROWSE_LISTS));
   for (JsonVariantConst l : lists) {
-    if (manifest.browseLists.size() - manifest.fixedListCount >= MAX_BROWSE_LISTS) {
+    if (fetchedLists.size() >= MAX_BROWSE_LISTS) {
       LOG_ERR("PCAT", "browse list index truncated to %u lists", static_cast<unsigned>(MAX_BROWSE_LISTS));
       break;
     }
     if (!matchesListRequirements(resolvePath(l, manifest.listsRequiresPath))) continue;
+    if (!manifest.listsMatchField.empty()) {
+      const std::string val = variantToString(resolvePath(l, manifest.listsMatchField));
+      if (!val.empty() && val != manifest.listsMatchValue) continue;
+    }
     Manifest::BrowseList entry;
     entry.title = variantToString(resolvePath(l, manifest.listsTitlePath));
     entry.url = variantToString(resolvePath(l, manifest.listsUrlPath));
@@ -412,11 +473,30 @@ bool PluginCatalogActivity::loadBrowseListIndex(int& status) {
     entry.noticeCancel = notice["cancel"] | "";
     // An entry with only an id browses the shared browse url through {list_id}.
     const bool browsable = !entry.url.empty() || !entry.id.empty();
-    if (!entry.title.empty() && browsable) manifest.browseLists.push_back(std::move(entry));
+    if (!entry.title.empty() && browsable) fetchedLists.push_back(std::move(entry));
   }
-  if (manifest.browseLists.size() == manifest.fixedListCount) {
+  if (fetchedLists.empty()) {
     LOG_ERR("PCAT", "browse list index has no valid lists: %s", url.c_str());
     return false;
+  }
+  if (manifest.listViews.empty()) {
+    manifest.browseLists.reserve(manifest.fixedListCount + fetchedLists.size());
+    for (auto& entry : fetchedLists) manifest.browseLists.push_back(std::move(entry));
+  } else {
+    const bool singleLib = fetchedLists.size() == 1;
+    const size_t total = std::min(MAX_BROWSE_LISTS, fetchedLists.size() * manifest.listViews.size());
+    manifest.browseLists.reserve(manifest.fixedListCount + total);
+    for (const auto& lib : fetchedLists) {
+      for (const auto& tmpl : manifest.listViews) {
+        if (manifest.browseLists.size() - manifest.fixedListCount >= MAX_BROWSE_LISTS) break;
+        Manifest::BrowseList view = tmpl;
+        view.id = lib.id;
+        view.title = singleLib ? tmpl.title : (lib.title + " - " + tmpl.title);
+        if (view.url.empty() && !view.searchPrompt) view.url = lib.url;
+        if (view.body.empty()) view.body = lib.body;
+        manifest.browseLists.push_back(std::move(view));
+      }
+    }
   }
   return true;
 }
@@ -455,6 +535,8 @@ std::string PluginCatalogActivity::substituted(std::string tpl, const Item* item
   substituteAll(tpl, "{plugin_api}", num);
   snprintf(num, sizeof(num), "%d", page);
   substituteAll(tpl, "{page}", num);
+  snprintf(num, sizeof(num), "%d", std::max(0, page - 1));
+  substituteAll(tpl, "{page0}", num);
   snprintf(num, sizeof(num), "%d", plugincatalogpaging::limitFor(browsePaging(), manifest.pageSize));
   substituteAll(tpl, "{limit}", num);
   snprintf(num, sizeof(num), "%d", std::max(0, page - 1) * manifest.pageSize);
@@ -640,6 +722,10 @@ void PluginCatalogActivity::resetBrowse() {
   currentList = -1;
   searchActive = false;
   searchQuery.clear();
+  drillActive = false;
+  drillUrl.clear();
+  drillTitle.clear();
+  drillReturnPage = 1;
   releaseRows();
   nav.reset();
 }
@@ -647,10 +733,22 @@ void PluginCatalogActivity::resetBrowse() {
 // Shows the list's notice first when it has one. Declining stays on the
 // picker, or leaves the catalog when this list is the only one.
 void PluginCatalogActivity::openList(const int index) {
+  const auto enterPicked = [this, index] {
+    currentList = index;
+    drillActive = false;
+    drillUrl.clear();
+    drillTitle.clear();
+    if (manifest.browseLists[index].searchPrompt) {
+      searchActive = false;
+      state = State::LIST_PICKER;  // cancel returns here cleanly
+      launchSearch();
+      return;
+    }
+    startBrowse();
+  };
   const auto& list = manifest.browseLists[index];
   if (!list.hasNotice()) {
-    currentList = index;
-    startBrowse();
+    enterPicked();
     return;
   }
   const std::string heading = substituted(list.noticeTitle.empty() ? list.title : list.noticeTitle, nullptr);
@@ -663,13 +761,12 @@ void PluginCatalogActivity::openList(const int index) {
     if (manifest.browseLists.size() == 1) exitCatalog();
     return;
   }
-  startActivityForResult(std::move(confirmation), [this, index](const ActivityResult& result) {
+  startActivityForResult(std::move(confirmation), [this, enterPicked](const ActivityResult& result) {
     if (result.isCancelled) {
       if (manifest.browseLists.size() == 1) exitCatalog();
       return;
     }
-    currentList = index;
-    startBrowse();
+    enterPicked();
   });
 }
 
@@ -738,12 +835,29 @@ void PluginCatalogActivity::startBrowse() {
 
 void PluginCatalogActivity::performSearch(const std::string& query) {
   if (query.empty()) {
+    if (const auto* list = activeList(); list && list->searchPrompt && !searchActive) {
+      currentList = -1;
+      startBrowse();
+      return;
+    }
     requestUpdate();
     return;
   }
+  drillActive = false;
+  drillUrl.clear();
+  drillTitle.clear();
   searchQuery = query;
   searchActive = true;
-  currentList = -1;  // search spans the whole catalog, not a single list
+  if (!plugincatalogpaging::usesListId(activeSearchUrl(), activeSearchBody())) {
+    currentList = -1;  // search spans the whole catalog, not a single list
+  } else if (currentList < 0 || manifest.browseLists[currentList].id.empty()) {
+    for (size_t i = 0; i < manifest.browseLists.size(); i++) {
+      if (!manifest.browseLists[i].id.empty()) {
+        currentList = static_cast<int>(i);
+        break;
+      }
+    }
+  }
   releaseRows();
   nav.reset();
   beginLoading();
@@ -751,6 +865,7 @@ void PluginCatalogActivity::performSearch(const std::string& query) {
 }
 
 bool PluginCatalogActivity::refreshCredentialToken() {
+  if (!manifest.hasPasswordGrant()) return false;
   loadConfig();
   std::string minted;
   if (!pluginhttp::mintPasswordToken(session.get(), substituted(manifest.authReq.url, nullptr), manifest.authReq.method,
@@ -858,17 +973,101 @@ int PluginCatalogActivity::rowCount() const {
   return static_cast<int>(items.size()) + (prevRowVisible() ? 1 : 0) + (nextRowVisible() ? 1 : 0);
 }
 
+const PluginCatalogActivity::Manifest::BrowseList* PluginCatalogActivity::activeList() const {
+  if (currentList < 0 || currentList >= static_cast<int>(manifest.browseLists.size())) return nullptr;
+  return &manifest.browseLists[currentList];
+}
+
+const std::string& PluginCatalogActivity::activeSearchUrl() const {
+  const auto* list = activeList();
+  return list ? pick(list->search.url, manifest.searchUrl) : manifest.searchUrl;
+}
+
+const std::string& PluginCatalogActivity::activeSearchBody() const {
+  const auto* list = activeList();
+  return list ? pick(list->search.body, manifest.searchBody) : manifest.searchBody;
+}
+
+bool PluginCatalogActivity::activeRequireUrl() const {
+  const auto* list = activeList();
+  if (drillActive && list && list->hasDrill() && list->drill.requireUrl >= 0) return list->drill.requireUrl == 1;
+  if (searchActive && list && list->search.requireUrl >= 0) return list->search.requireUrl == 1;
+  if (list && list->requireUrl >= 0) return list->requireUrl == 1;
+  return manifest.requireUrl;
+}
+
+bool PluginCatalogActivity::activeHasDrill() const {
+  const auto* list = activeList();
+  return list && list->hasDrill();
+}
+
 const std::string& PluginCatalogActivity::activeBrowseUrl() const {
-  // Search overrides the list view, reusing the browse url when unspecified.
-  if (searchActive) return pick(manifest.searchUrl, manifest.browseReq.url);
-  if (currentList < 0 || currentList >= static_cast<int>(manifest.browseLists.size())) return manifest.browseReq.url;
-  return pick(manifest.browseLists[currentList].url, manifest.browseReq.url);
+  const auto* list = activeList();
+  if (drillActive && list && list->hasDrill()) return drillUrl;
+  // Search overrides the list view, reusing the list/browse url when unspecified.
+  if (searchActive)
+    return pick(activeSearchUrl(), list ? pick(list->url, manifest.browseReq.url) : manifest.browseReq.url);
+  return list ? pick(list->url, manifest.browseReq.url) : manifest.browseReq.url;
 }
 
 const std::string& PluginCatalogActivity::activeBrowseBody() const {
-  if (searchActive) return pick(manifest.searchBody, manifest.browseReq.body);
-  if (currentList < 0 || currentList >= static_cast<int>(manifest.browseLists.size())) return manifest.browseReq.body;
-  return pick(manifest.browseLists[currentList].body, manifest.browseReq.body);
+  const auto* list = activeList();
+  if (drillActive && list && list->hasDrill()) return pick(list->drill.body, manifest.browseReq.body);
+  if (searchActive)
+    return pick(activeSearchBody(), list ? pick(list->body, manifest.browseReq.body) : manifest.browseReq.body);
+  return list ? pick(list->body, manifest.browseReq.body) : manifest.browseReq.body;
+}
+
+const std::string& PluginCatalogActivity::activeItemsPath() const {
+  const auto* list = activeList();
+  const std::string& listPath = list ? pick(list->itemsPath, manifest.itemsPath) : manifest.itemsPath;
+  if (drillActive && list && list->hasDrill()) return pick(list->drill.itemsPath, listPath);
+  if (searchActive)
+    return pick(list ? pick(list->search.itemsPath, manifest.searchItemsPath) : manifest.searchItemsPath, listPath);
+  return listPath;
+}
+const std::string& PluginCatalogActivity::activeTitlePath() const {
+  const auto* list = activeList();
+  const std::string& listPath = list ? pick(list->titlePath, manifest.titlePath) : manifest.titlePath;
+  if (drillActive && list && list->hasDrill()) return pick(list->drill.titlePath, listPath);
+  if (searchActive)
+    return pick(list ? pick(list->search.titlePath, manifest.searchTitlePath) : manifest.searchTitlePath, listPath);
+  return listPath;
+}
+const std::string& PluginCatalogActivity::activeAuthorPath() const {
+  const auto* list = activeList();
+  const std::string& listPath = list ? pick(list->authorPath, manifest.authorPath) : manifest.authorPath;
+  if (drillActive && list && list->hasDrill()) return pick(list->drill.authorPath, listPath);
+  if (searchActive)
+    return pick(list ? pick(list->search.authorPath, manifest.searchAuthorPath) : manifest.searchAuthorPath, listPath);
+  return listPath;
+}
+const std::string& PluginCatalogActivity::activeIdPath() const {
+  const auto* list = activeList();
+  const std::string& listPath = list ? pick(list->idPath, manifest.idPath) : manifest.idPath;
+  if (drillActive && list && list->hasDrill()) return pick(list->drill.idPath, listPath);
+  if (searchActive)
+    return pick(list ? pick(list->search.idPath, manifest.searchIdPath) : manifest.searchIdPath, listPath);
+  return listPath;
+}
+const std::string& PluginCatalogActivity::activeUrlPath() const {
+  const auto* list = activeList();
+  const std::string& listPath = list ? pick(list->urlPath, manifest.urlPath) : manifest.urlPath;
+  if (drillActive && list && list->hasDrill()) return pick(list->drill.urlPath, listPath);
+  if (searchActive)
+    return pick(list ? pick(list->search.urlPath, manifest.searchUrlPath) : manifest.searchUrlPath, listPath);
+  return listPath;
+}
+const std::string& PluginCatalogActivity::activeDescriptionPath() const {
+  const auto* list = activeList();
+  const std::string& listPath = list ? pick(list->descriptionPath, manifest.descriptionPath) : manifest.descriptionPath;
+  if (drillActive && list && list->hasDrill()) return pick(list->drill.descriptionPath, listPath);
+  if (searchActive) {
+    return pick(
+        list ? pick(list->search.descriptionPath, manifest.searchDescriptionPath) : manifest.searchDescriptionPath,
+        listPath);
+  }
+  return listPath;
 }
 
 plugincatalogpaging::Paging PluginCatalogActivity::browsePaging() const {
@@ -876,8 +1075,23 @@ plugincatalogpaging::Paging PluginCatalogActivity::browsePaging() const {
 }
 
 void PluginCatalogActivity::fetchPage(const int newPage) {
+  const int prevPage = page;
   if (!manifest.isXmlList()) page = newPage;
   if (!fetchBrowseResponse() || !parseBrowseResponse()) return;
+  if (!manifest.isXmlList() && !searchActive && browsePaging() != plugincatalogpaging::Paging::Static) {
+    // Server-paged mixed catalogs (e.g. audiobooks + ebooks where require_fields
+    // hides items without an ebook) can yield an empty visible page while more
+    // server pages remain. Step through a bounded run of empty filtered pages.
+    static constexpr int MAX_EMPTY_PAGE_SKIPS = 8;
+    const int step = (newPage < prevPage) ? -1 : 1;
+    for (int skipped = 0; skipped < MAX_EMPTY_PAGE_SKIPS && items.empty(); skipped++) {
+      if (step > 0 && !hasMore) break;
+      if (step < 0 && page <= 1) break;
+      page += step;
+      resetTaskWatchdogIfSubscribed();
+      if (!fetchBrowseResponse() || !parseBrowseResponse()) return;
+    }
+  }
   nav.reset();
   state = State::BROWSING;
   requestUpdate();
@@ -913,12 +1127,12 @@ bool PluginCatalogActivity::parseBrowseResponse() {
     };
     const std::string* compatibilityFields[JsonListParser::F_COUNT] = {};
     for (auto& field : compatibilityFields) field = &unused;
-    compatibilityFields[JsonListParser::F_TITLE] = &manifest.titlePath;
+    compatibilityFields[JsonListParser::F_TITLE] = &activeTitlePath();
     compatibilityFields[COMPAT_FAMILY] = &manifest.compatFamilyPath;
     compatibilityFields[COMPAT_API_MIN] = &manifest.compatApiMinPath;
     compatibilityFields[COMPAT_REQUIRES] = &manifest.compatRequiresPath;
     auto compatibilityParser = makeUniqueNoThrow<JsonListParser>(
-        manifest.itemsPath, compatibilityFields, unused,
+        activeItemsPath(), compatibilityFields, unused,
         [](void* context, JsonListParser::Row& row) { (*static_cast<decltype(selectCompatible)*>(context))(row); },
         &selectCompatible);
     if (!streamBrowseFile(compatibilityParser.get())) {
@@ -934,21 +1148,25 @@ bool PluginCatalogActivity::parseBrowseResponse() {
   int rowIndex = 0;
   size_t compatibleIndex = 0;
   plugincatalogpaging::PageWindow visibleWindow(pageOffset, manifest.pageSize);
+  const bool reqUrl = activeRequireUrl();
+  const bool markDrillDirs = !manifest.isXmlList() && activeHasDrill() && !drillActive;
   auto append = [&](JsonListParser::Row& row) {
     const int thisRow = rowIndex++;
+    const bool shown =
+        !row.field[JsonListParser::F_TITLE].empty() && (!reqUrl || !row.field[JsonListParser::F_URL].empty());
     if (manifest.filtersCompatibility()) {
       if (compatibleIndex >= compatibleRows.size() || compatibleRows[compatibleIndex] != thisRow) return;
       compatibleIndex++;
-    } else if (!visibleWindow.take(
-                   plugincatalogpaging::countsTowardPage(paging, !row.field[JsonListParser::F_TITLE].empty()))) {
+    } else if (!visibleWindow.take(plugincatalogpaging::countsTowardPage(paging, shown))) {
       return;
     }
-    if (row.field[JsonListParser::F_TITLE].empty()) return;
+    if (!shown) return;
     Item item;
     item.title = std::move(row.field[JsonListParser::F_TITLE]);
     item.author = std::move(row.field[JsonListParser::F_AUTHOR]);
     item.id = std::move(row.field[JsonListParser::F_ID]);
     item.url = std::move(row.field[JsonListParser::F_URL]);
+    item.isDir = markDrillDirs && !item.id.empty();
     item.version = std::move(row.field[JsonListParser::F_VERSION]);
     item.base = std::move(row.field[JsonListParser::F_BASE]);
     item.files = std::move(row.files);
@@ -956,10 +1174,10 @@ bool PluginCatalogActivity::parseBrowseResponse() {
   };
   // Streamed straight from the SD temp file: neither the raw response nor a
   // parsed document occupies DRAM, only the rows kept.
-  const std::string* const fields[] = {&manifest.titlePath, &manifest.authorPath,  &manifest.idPath,
-                                       &manifest.urlPath,   &manifest.versionPath, &manifest.bundleBasePath};
+  const std::string* const fields[] = {&activeTitlePath(), &activeAuthorPath(),   &activeIdPath(),
+                                       &activeUrlPath(),   &manifest.versionPath, &manifest.bundleBasePath};
   auto parser = makeUniqueNoThrow<JsonListParser>(
-      manifest.itemsPath, fields, manifest.bundleFilesPath,
+      activeItemsPath(), fields, manifest.bundleFilesPath,
       [](void* context, JsonListParser::Row& row) { (*static_cast<decltype(append)*>(context))(row); }, &append);
   if (!streamBrowseFile(parser.get())) {
     fail(StrId::STR_PARSE_FEED_FAILED);
@@ -1185,7 +1403,7 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBook(const Item& it
   if (!manifest.dlUrlPath.empty()) {
     String response;
     int status = apiRequest(substitutedRequest(manifest.downloadReq, &item), response);
-    // An expired password-grant token: mint a fresh one and retry once.
+    // An expired password-grant token: refresh once and retry.
     if ((status == 401 || status == 403) && manifest.hasPasswordGrant() && refreshCredentialToken()) {
       status = apiRequest(substitutedRequest(manifest.downloadReq, &item), response);
     }
@@ -1240,7 +1458,7 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBook(const Item& it
   };
   session.reset();  // free browse TLS before the large file GET
   auto result = fetchFile();
-  // A GET with the catalog's token templates gets one mint-and-retry when an
+  // A GET with the catalog's token templates gets one refresh-and-retry when an
   // expired password-grant token is refused.
   if (result == HttpDownloader::UNAUTHORIZED && sendDownloadHeaders && manifest.hasPasswordGrant() &&
       refreshCredentialToken()) {
@@ -1373,10 +1591,19 @@ void PluginCatalogActivity::onBackButton() {
     }
     return;
   }
+  if (drillActive) {
+    drillActive = false;
+    drillUrl.clear();
+    drillTitle.clear();
+    beginLoading();
+    fetchPage(drillReturnPage);
+    return;
+  }
   if (searchActive) {
     // Leave the results and return to the pre-search view (picker or page 1).
     searchActive = false;
     searchQuery.clear();
+    if (const auto* list = activeList(); list && list->searchPrompt) currentList = -1;
     if (manifest.browseLists.size() == 1) currentList = 0;  // its notice was already accepted
     startBrowse();
     return;
@@ -1488,6 +1715,15 @@ void PluginCatalogActivity::activateItem(const int itemIndex) {
     fetchPage(page);
     return;
   }
+  if (!manifest.isXmlList() && item.isDir && activeHasDrill() && !drillActive) {
+    drillUrl = substituted(activeList()->drill.url, &item);
+    drillTitle = item.title;
+    drillReturnPage = page;
+    drillActive = true;
+    beginLoading();
+    fetchPage(1);
+    return;
+  }
   if (!manifest.isXmlList() && manifest.hasItemDetails()) {
     showItemDetails(itemIndex);
     return;
@@ -1509,14 +1745,14 @@ bool PluginCatalogActivity::loadItemDetails(const int itemIndex, ItemDetails& de
   const auto streamFor = [&](auto& capture, const std::string* author, const std::string* extraUrl,
                              const std::string* extraBase) {
     const std::string* fields[JsonListParser::F_COUNT] = {};
-    fields[JsonListParser::F_TITLE] = &manifest.titlePath;
+    fields[JsonListParser::F_TITLE] = &activeTitlePath();
     fields[JsonListParser::F_AUTHOR] = author;
-    fields[JsonListParser::F_ID] = &manifest.idPath;
+    fields[JsonListParser::F_ID] = &activeIdPath();
     fields[JsonListParser::F_URL] = extraUrl;
     fields[JsonListParser::F_VERSION] = &manifest.versionPath;
     fields[JsonListParser::F_BASE] = extraBase;
     auto parser = makeUniqueNoThrow<JsonListParser>(
-        manifest.itemsPath, fields, unused,
+        activeItemsPath(), fields, unused,
         [](void* context, JsonListParser::Row& row) {
           (*static_cast<std::remove_reference_t<decltype(capture)>*>(context))(row);
         },
@@ -1532,9 +1768,9 @@ bool PluginCatalogActivity::loadItemDetails(const int itemIndex, ItemDetails& de
     details.repository = std::move(row.field[DETAIL_REPOSITORY]);
     found = true;
   };
+  const std::string& detailAuthor = searchActive ? activeAuthorPath() : manifest.detailAuthorPath;
   const bool metadataFound =
-      streamFor(captureMetadata, &manifest.detailAuthorPath, &manifest.descriptionPath, &manifest.repositoryPath) &&
-      found;
+      streamFor(captureMetadata, &detailAuthor, &activeDescriptionPath(), &manifest.repositoryPath) && found;
   if (manifest.detailsUrlPath.empty()) return metadataFound;
 
   bool pageFound = false;
@@ -1618,7 +1854,7 @@ void PluginCatalogActivity::drawFooter() {
         confirmLabel = count > 0 ? tr(STR_OPEN) : "";
       } else {
         const bool onItem = itemSel >= 0 && itemSel < static_cast<int>(items.size());
-        const bool onDir = manifest.isXmlList() && onItem && items[itemSel].isDir;
+        const bool onDir = onItem && (manifest.isXmlList() || !drillActive) && items[itemSel].isDir;
         const bool onDetails = !manifest.isXmlList() && onItem && manifest.hasItemDetails();
         confirmLabel = count == 0 ? "" : (onDir ? tr(STR_OPEN) : (onDetails ? tr(STR_DETAILS) : tr(STR_FETCH)));
       }
@@ -1701,7 +1937,9 @@ void PluginCatalogActivity::buildAuthScreen(UiScreen& screen) {
 
 std::string PluginCatalogActivity::browsingHeaderLabel() const {
   std::string label = catalogTitle;
-  if (searchActive) {
+  if (drillActive && !drillTitle.empty()) {
+    label = drillTitle;
+  } else if (searchActive) {
     label = std::string(tr(STR_SEARCH)) + ": " + searchQuery;
   } else if (state == State::BROWSING && currentList >= 0 &&
              currentList < static_cast<int>(manifest.browseLists.size())) {
@@ -1788,7 +2026,7 @@ void PluginCatalogActivity::rebuildRowItems() {
   } else if (state == State::LIST_PICKER) {
     for (const auto& list : manifest.browseLists) addRow(list.title.c_str());
   } else {
-    if (prevRowVisible()) addRow(tr(STR_PREV_PAGE), nullptr, ">");
+    if (prevRowVisible()) addRow(tr(STR_PREV_PAGE), nullptr, "<");
     for (const auto& entry : items) {
       addRow(entry.title.c_str(), entry.author.c_str(), entry.isDir ? ">" : entry.status.c_str());
     }

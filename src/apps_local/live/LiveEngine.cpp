@@ -5,6 +5,7 @@
 
 #include <ctime>
 
+#include "../ClockFloor.h"
 #include "LiveBridge.h"
 #include "LiveCore.h"
 
@@ -29,7 +30,12 @@ namespace engine {
 
 namespace {
 
-int64_t nowEpoch() { return static_cast<int64_t>(std::time(nullptr)); }
+// 0 ("no clock" to decide() and to adoptServerTime()) when the clock predates
+// this firmware's build, so a never-set RTC never computes a stale schedule.
+int64_t nowEpoch() {
+  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  return clockfloor::trusted(now) ? now : 0;
+}
 
 // The reader's own battery, whole percent, or -1 when the gauge did not answer.
 //

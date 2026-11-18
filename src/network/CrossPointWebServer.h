@@ -106,8 +106,8 @@ class CrossPointWebServer {
   // Stop the web server
   void stop();
 
-  // Call this periodically to handle client requests
-  void handleClient();
+  // Call this periodically to handle client requests; returns true if HTTP work was processed.
+  bool handleClient();
 
   // Check if server is running
   bool isRunning() const { return running; }
@@ -280,6 +280,7 @@ class CrossPointWebServer {
   void handleBookKey();           // POST /api/book-key  -> store a protected book's wrapped content key
   void handlePluginFs();          // POST /api/plugin-fs -> plugin writes a small file to SD
   void handlePluginFsUpload();    // its multipart file part, streamed to <path>.tmp
+  void handlePluginConfig();      // POST /api/plugin-config -> save plugin config with obfuscated secrets
 
   // One /api/plugin-fs write in flight: chunks land in `tmp`, which replaces
   // `path` only after a complete, non-empty body.

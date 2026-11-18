@@ -88,6 +88,10 @@ echo "==> Running Multi-Device Partition Safety Check ..."
 "$SCRIPTS_DIR/check-partitions.sh"
 
 echo ""
+echo "==> Packaging in-repo SD plugins ..."
+"$SCRIPTS_DIR/package-plugins.sh"
+
+echo ""
 echo "==> Ready-to-flash artifacts:"
 if [ "$TARGET" = "x4pro" ] || [ "$TARGET" = "all" ]; then
   ls -lh ".pio/build/$ENV_X4PRO/firmware.bin" ".pio/build/$ENV_X4PRO/firmware.factory.bin" 2>/dev/null || true
@@ -98,6 +102,7 @@ fi
 if [ "$TARGET" = "eego_a4" ] || [ "$TARGET" = "all" ]; then
   ls -lh ".pio/build/$ENV_EEGO/firmware.bin" ".pio/build/$ENV_EEGO/firmware.factory.bin" 2>/dev/null || true
 fi
+ls -lh "dist/xmarginalia-audiobookshelf-plugin.zip" 2>/dev/null || true
 echo ""
 echo "Flash without rebuilding using:"
 echo "  ./scripts_local/flash-device.sh x4pro     # flashes X4 Pro"

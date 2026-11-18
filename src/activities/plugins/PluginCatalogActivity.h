@@ -74,22 +74,38 @@ class PluginCatalogActivity final : public CatalogActivity {
       return !compatFamilyPath.empty() || !compatApiMinPath.empty() || !compatRequiresPath.empty();
     }
     int pageSize = 8;
-    // Named JSON views override the browse URL/body; Back returns to their picker.
+    // Named JSON views override the browse URL/body/fields; Back returns to their picker.
+    struct ListSpec {
+      std::string url, body;
+      std::string itemsPath, titlePath, authorPath, idPath, urlPath, descriptionPath;
+      int8_t requireUrl = -1;  // -1 = inherit, 0 = false, 1 = true
+    };
     struct BrowseList {
       std::string title, url, body;
       std::string id;  // fills {list_id}, so lists can share one browse url
+      std::string itemsPath, titlePath, authorPath, idPath, urlPath, descriptionPath;
+      int8_t requireUrl = -1;
+      bool searchPrompt = false;  // tapping this row opens the search keyboard directly
+      ListSpec search;            // optional per-list search override
+      ListSpec drill;             // optional JSON directory drill-down (e.g. Author -> books)
       std::string noticeTitle, noticeMessage, noticeConfirm, noticeCancel;
       bool hasNotice() const { return !noticeMessage.empty(); }
+      bool hasDrill() const { return !drill.url.empty(); }
     };
     std::vector<BrowseList> browseLists;
+    // Optional per-library view templates expanded against each dynamic list.
+    std::vector<BrowseList> listViews;
     // Optional remote index whose views follow the manifest's own lists,
     // read with its own headers from the array and entry fields below.
     std::string browseListsUrl;
     pluginhttp::Headers listsHeaders;
     std::string listsItemsPath, listsTitlePath, listsUrlPath, listsIdPath, listsRequiresPath;
+    std::string listsMatchField, listsMatchValue;
     size_t fixedListCount = 0;  // leading browseLists entries from the manifest
-    // JSON search overrides URL/body independently; empty fields reuse browse.
+    // JSON search overrides URL/body/items/fields independently; empty fields reuse browse.
     std::string searchUrl, searchBody;
+    std::string searchItemsPath, searchTitlePath, searchAuthorPath, searchIdPath, searchUrlPath, searchDescriptionPath;
+    bool requireUrl = false;
     bool hasSearch() const { return (!searchUrl.empty() || !searchBody.empty()) && browseFormat != "xml"; }
     // XML list options:
     std::string xmlItem;                     // local-name of the repeating element (required)
@@ -161,6 +177,9 @@ class PluginCatalogActivity final : public CatalogActivity {
   bool listIndexLoaded = false;
   std::string searchQuery;
   bool searchActive = false;
+  bool drillActive = false;
+  std::string drillUrl, drillTitle;
+  int drillReturnPage = 1;
   // Reuse browse TLS; release in the picker and before a single-file download.
   std::unique_ptr<freeink::SecureHttpClient> session;
   // XML-list folder navigation: current container URL and the trail back out.
@@ -220,8 +239,19 @@ class PluginCatalogActivity final : public CatalogActivity {
   void buildAuthScreen(UiScreen& screen);
   void buildBrowsingScreen(UiScreen& screen);
   // Browse url/body with the selected browse list's overrides applied.
+  const Manifest::BrowseList* activeList() const;
+  bool activeRequireUrl() const;
+  bool activeHasDrill() const;
+  const std::string& activeSearchUrl() const;
+  const std::string& activeSearchBody() const;
   const std::string& activeBrowseUrl() const;
   const std::string& activeBrowseBody() const;
+  const std::string& activeItemsPath() const;
+  const std::string& activeTitlePath() const;
+  const std::string& activeAuthorPath() const;
+  const std::string& activeIdPath() const;
+  const std::string& activeUrlPath() const;
+  const std::string& activeDescriptionPath() const;
   plugincatalogpaging::Paging browsePaging() const;
   // Copies `headers` with `substituted()` applied to each value.
   pluginhttp::Headers substitutedHeaders(const pluginhttp::Headers& headers, const Item* item) const;

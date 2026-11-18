@@ -505,6 +505,79 @@ std::string bandLabel(const FakeTarget& t, const fui::Rect& band) {
   return "?";
 }
 
+// A text box that crosses a drawn outline without sitting inside it: a title
+// running into a header chip, a label over a button's border. Card #759: the
+// Wikipedia article's title ran into its back chip for weeks, because every
+// probe here asked whether content cleared the CHROME and none asked whether
+// two things inside it cleared each other. Measured on every render, like the
+// chrome probe, so no screen has to remember to ask.
+bool rectsCross(const fui::Rect& a, const fui::Rect& b) {
+  return a.x < b.right() && b.x < a.right() && a.y < b.bottom() && b.y < a.bottom();
+}
+bool rectInside(const fui::Rect& inner, const fui::Rect& outer) {
+  return inner.x >= outer.x && inner.y >= outer.y && inner.right() <= outer.right() && inner.bottom() <= outer.bottom();
+}
+// Inside the header band only. Everywhere else a text box (the line box, taller
+// than its ink) legitimately crosses outlines: fanned cards, a digit seated on a
+// tile's top edge. In the band every outline is a chip and every text run is a
+// title, a label or a chip's own word, so a crossing is always a defect.
+void checkBandTextClearsChips(const FakeTarget& target, const fui::Rect& band) {
+  if (band.height == 0) return;
+  for (const auto& run : target.texts) {
+    if (run.text.empty() || run.rect.width <= 0 || run.rect.height <= 0 || run.rect.y >= band.bottom()) continue;
+    for (const auto& stroke : target.strokes) {
+      if (stroke.width == 0 || stroke.rect.y >= band.bottom()) continue;
+      if (!rectsCross(run.rect, stroke.rect) || rectInside(run.rect, stroke.rect)) continue;
+      ++checksFailed;
+      std::printf("FAIL band text: \"%s\" [%d,%d %dx%d] runs into a chip [%d,%d %dx%d]\n",
+                  run.text.substr(0, 40).c_str(), run.rect.x, run.rect.y, run.rect.width, run.rect.height,
+                  stroke.rect.x, stroke.rect.y, stroke.rect.width, stroke.rect.height);
+      break;
+    }
+  }
+}
+
+// The back control and the title share one line. Study's count once sat
+// 12.5px above its own back arrow because two pieces of code each placed half
+// of the row; this asks every header render the same question the screenshot
+// check (tools_local/header_row_check.py) asks every simulator shot, so a
+// header drawn by this library cannot drift either. Ink to ink: the control's
+// box centre (icons and chips are drawn centred in their boxes) against the
+// title's capital ink, never the title's line box.
+int headerRowsMeasured = 0;
+void checkBandRowAligned(const FakeTarget& target, const fui::Rect& band) {
+  if (band.height == 0) return;
+  fui::Rect control{};
+  bool found = false;
+  const auto consider = [&](const fui::Rect& r) {
+    if (r.bottom() > band.height || r.x >= 60 || r.height < 14 || r.width >= 90) return;
+    if (!found || r.x < control.x || (r.x == control.x && r.height > control.height)) {
+      control = r;
+      found = true;
+    }
+  };
+  for (const auto& blit : target.blits) consider(blit.rect);
+  for (const auto& stroke : target.strokes) consider(stroke.rect);
+  if (!found) return;
+  const FakeTarget::TextRun* title = nullptr;
+  for (const auto& run : target.texts) {
+    if (run.text.empty() || run.style.maxLines > 1 || run.rect.bottom() > band.height) continue;
+    const int gap = run.rect.x - control.right();
+    if (gap < 0 || gap > 60) continue;
+    if (title == nullptr || run.rect.x < title->rect.x) title = &run;
+  }
+  if (title == nullptr) return;
+  ++headerRowsMeasured;
+  const fui::Rect ink = inkBandOf(*title);
+  const int controlMid2 = 2 * control.y + control.height;  // doubled: no half pixels lost
+  const int titleMid2 = 2 * ink.y + ink.height;
+  if (std::abs(controlMid2 - titleMid2) <= 2 * 3) return;
+  ++checksFailed;
+  std::printf("FAIL header row: [%s] control [%d,%d %dx%d] centred at %.1f, title ink centred at %.1f\n",
+              title->text.substr(0, 40).c_str(), control.x, control.y, control.width, control.height, controlMid2 / 2.0,
+              titleMid2 / 2.0);
+}
+
 // One rendered screen, with everything the assertions need to inspect.
 struct Rendered {
   FakeTarget target;
@@ -546,6 +619,9 @@ struct Rendered {
   // probe above for why this is not a per-screen assertion.
   ~Rendered() {
     const fui::Rect band = bandRectOf(target);
+    ++checksRun;
+    checkBandTextClearsChips(target, band);
+    checkBandRowAligned(target, band);
     if (band.height == 0) {
       // Not a header render: a popup, a headerless play screen (Forehead's
       // round, every Wavelength screen), or a build that drew nothing. Counted
@@ -4590,6 +4666,60 @@ hnui::ReaderModel articleModel() {
   return model;
 }
 
+// Mario 2026-11-17, on the review shots: "I see some stuff overlapping". The
+// Wikipedia article's title ran into its outlined back chip, and a reader's
+// page count into its SAVE chip. Both are the header component's placement,
+// so both are measured on the real screens: every text box in the band clears
+// every outlined chip in it.
+std::vector<fui::Rect> bandChips(const Rendered& out) {
+  std::vector<fui::Rect> chips;
+  for (const auto& stroke : out.target.strokes) {
+    if (stroke.rect.y < toybox::kHeaderHeight && stroke.rect.height >= 24) chips.push_back(stroke.rect);
+  }
+  std::sort(chips.begin(), chips.end(), [](const fui::Rect& a, const fui::Rect& b) { return a.x < b.x; });
+  return chips;
+}
+
+const FakeTarget::TextRun* runOf(const Rendered& out, const char* text) {
+  for (const auto& run : out.target.texts) {
+    if (run.text == text) return &run;
+  }
+  return nullptr;
+}
+
+void testHeaderTextClearsItsChips() {
+  constexpr int kClear = 6;
+  {
+    Rendered wiki;
+    const fui::DeviceContext ctx = device();
+    const fui::InputSnapshot noInput{};
+    {
+      toybox::Frame frame(wiki.target, ctx, noInput, wiki.interactions);
+      toybox::Screen screen(frame, toybox::themeTokens());
+      wikiui::ArticleChromeModel model;
+      model.title = "Pharming (genetics)";
+      wikiui::buildArticleChrome(screen, model);
+    }
+    const auto chips = bandChips(wiki);
+    const auto* title = runOf(wiki, "Pharming (genetics)");
+    CHECK(title != nullptr && chips.size() >= 2);
+    if (title != nullptr && chips.size() >= 2) {
+      CHECK(title->rect.x >= chips.front().right() + kClear);
+      CHECK(title->rect.right() <= chips.back().x - kClear);
+    }
+  }
+  {
+    Rendered hn;
+    hnui::ReaderModel model = articleModel();
+    model.canSave = true;
+    buildHnReader(hn, model);
+    const auto chips = bandChips(hn);
+    const auto* label = runOf(hn, "1/3");
+    CHECK(label != nullptr && !chips.empty());
+    if (label != nullptr && !chips.empty()) CHECK(label->rect.right() <= chips.back().x - kClear);
+  }
+}
+
 bool drewText(const Rendered& out, const char* needle) {
   for (const auto& run : out.target.texts) {
     if (run.text.find(needle) != std::string::npos) return true;
@@ -5322,6 +5452,98 @@ void testStudyHeadlineIsTheHitTarget() {
   }
 }
 
+// The ornament's brackets sit on the page's margin, as every bracketed front
+// door's do. Study's stood 8px from the panel's edges.
+void testStudyDeckBracketsSitOnTheMargin() {
+  int forecast[studyui::kForecastDays] = {289, 4, 0, 12, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0};
+  Rendered out;
+  buildStudyDeck(out, deckWithWork(forecast));
+  int left = 480;
+  int right = -1;
+  int arms = 0;
+  for (const auto& fill : out.target.fills) {
+    const bool arm =
+        (fill.width == 32 && fill.height == toybox::kFrame) || (fill.width == toybox::kFrame && fill.height == 32);
+    if (!arm) continue;
+    ++arms;
+    left = std::min<int>(left, fill.x);
+    right = std::max<int>(right, fill.right());
+  }
+  CHECK(arms == 8);
+  CHECK(left == toybox::kMargin);
+  CHECK(right == 480 - toybox::kMargin);
+}
+
+// Report #727: a Sticky whose clock read February in November counted a deck
+// full of due cards as nothing due, and the screen said so in its largest type.
+// The activity now marks that clock untrusted (study::clockUntrusted); this is
+// what the screen must do with it.
+void testStudyDeckUnderAWrongClockSaysTheDateNotTheCount() {
+  int forecast[studyui::kForecastDays] = {};
+  for (const int fresh : {0, 23}) {
+    Rendered out;
+    // The UI cut's real letters: Jersey at 20 runs about 19 to the capital
+    // (measure.py 20: SYNC TO SET THE CLOCK 392px, REVIEW AFTER SYNC 326px).
+    // At the fake's ten, a door label cut short on the panel fits here.
+    out.target.fontWidths.push_back({toybox::kUiFont, 19});
+    studyui::DeckModel model;
+    model.name = "Vocabulary";
+    model.due = 0;
+    model.fresh = fresh;  // new cards are counted whatever the date says
+    model.total = 23;
+    model.forecast = forecast;
+    model.clockUnset = true;
+    buildStudyDeck(out, model);
+
+    CHECK(out.target.drew("WRONG DATE"));
+    CHECK(out.target.drew("SYNC TO SET THE CLOCK"));
+    CHECK(!out.target.drew("ALL CLEAR"));
+    CHECK(!out.target.drew("NOTHING DUE TODAY"));
+    CHECK(!out.target.drew("NOTHING TO REVIEW"));
+    CHECK(!out.target.drew("23 TO GO"));
+
+    // The review door is shut and its label is whole on the glass; the
+    // instruction is whole too, on a line wide enough for it.
+    CHECK(drewLabelWhole(out, "REVIEW AFTER SYNC"));
+    CHECK(drewLabelWhole(out, "SYNC TO SET THE CLOCK"));
+    const auto* door = out.target.find("REVIEW AFTER SYNC");
+    CHECK(door != nullptr);
+    if (door != nullptr) {
+      CHECK(out.tap(door->rect.x + 20, door->rect.y + 10).action != studyui::ActionStudy);
+    }
+    // And so is the headline, the other way into a session: a tap there under
+    // a wrong clock opened cards whose answers the review log then refused.
+    const auto* headline = out.target.find("WRONG DATE");
+    CHECK(headline != nullptr);
+    if (headline != nullptr) {
+      CHECK(out.tap(headline->rect.x + 20, headline->rect.y + 10).action != studyui::ActionStudy);
+    }
+    // SYNC, the way out, still answers.
+    const auto* sync = out.target.find("SYNC");
+    CHECK(sync != nullptr);
+    if (sync != nullptr) {
+      const fui::ActionEvent onSync = out.tap(sync->rect.x + 20, sync->rect.y + 10);
+      CHECK(onSync.action == studyui::ActionStudy && onSync.value == 2);
+    }
+  }
+  // With other decks on the card, what waits in them was counted from the
+  // same wrong date, so it is not offered either.
+  {
+    Rendered out;
+    studyui::DeckModel model;
+    model.name = "Vocabulary";
+    model.total = 23;
+    model.forecast = forecast;
+    model.deckCount = 2;
+    model.otherWaiting = 3;
+    model.clockUnset = true;
+    buildStudyDeck(out, model);
+    CHECK(out.target.drew("WRONG DATE"));
+    CHECK(!out.target.drew("3 WAITING IN YOUR OTHER DECK"));
+    CHECK(!out.target.drew("REVIEW ANOTHER DECK"));
+  }
+}
+
 void testStudyDeckRowSwitchesOnlyWhenThereIsSomewhereToGo() {
   int forecast[studyui::kForecastDays] = {};
   forecast[0] = 5;
@@ -5456,6 +5678,121 @@ void testStudyPanelSaysSoWhenItHasNothing() {
   Rendered some;
   buildStudyDeck(some, model);
   CHECK(!some.target.drew("NOTHING RECORDED YET"));
+}
+
+// --- the study card pager (card #761) ----------------------------------------
+//
+// A card longer than its screen pages, and the pager at the foot of the card
+// body is the touch route to the pages the side keys turn. Drawn into the
+// card body the review screen uses: below the header, above the 128px footer.
+
+fui::Rect studyCardBody() { return fui::makeRect(0, 89, 480, 800 - 89 - 128); }
+
+bool insideRect(const fui::Rect& outer, const fui::Rect& inner) {
+  return inner.x >= outer.x && inner.y >= outer.y && inner.right() <= outer.right() && inner.bottom() <= outer.bottom();
+}
+
+bool pointInside(const fui::Rect& outer, const fui::Point& p) {
+  return p.x >= outer.x && p.x <= outer.right() && p.y >= outer.y && p.y <= outer.bottom();
+}
+
+void testStudyPagerTakesTheFootOfTheCard() {
+  const fui::Rect body = studyCardBody();
+  const studyui::CardPagerLayout pager = studyui::cardPagerLayout(body);
+  // The band is the foot of the body, so the card's text stops above it and
+  // the footer below it is untouched.
+  CHECK(pager.band.y == body.bottom() - studyui::kCardPagerBand);
+  CHECK(pager.band.bottom() == body.bottom());
+  CHECK(pager.band.x == body.x && pager.band.width == body.width);
+  CHECK(insideRect(pager.band, pager.pill));
+  CHECK(pager.pill.x - body.x == body.right() - pager.pill.right());  // centred
+  // The two targets are inside the band, do not overlap, and each covers the
+  // arrow drawn at its end of the pill.
+  CHECK(insideRect(pager.band, pager.previous));
+  CHECK(insideRect(pager.band, pager.next));
+  CHECK(pager.previous.right() <= pager.next.x);
+  CHECK(pager.previous.x <= pager.pill.x && pager.previous.right() > pager.pill.x + 20);
+  CHECK(pager.next.right() >= pager.pill.right() && pager.next.x < pager.pill.right() - 20);
+}
+
+void testStudyPagerDrawsOnlyForALongFace() {
+  const fui::Rect body = studyCardBody();
+  const studyui::CardPagerLayout pager = studyui::cardPagerLayout(body);
+
+  // One page: nothing at all, so a card that fits looks as it always did.
+  Rendered single;
+  studyui::drawCardPager(single.target, pager, 0, 1);
+  CHECK(single.target.texts.empty() && single.target.fills.empty() && single.target.strokes.empty() &&
+        single.target.lines.empty());
+
+  // Three pages, on the first: the count, the outline, and both chevrons, all
+  // inside the band.
+  Rendered first;
+  studyui::drawCardPager(first.target, pager, 0, 3);
+  CHECK(first.target.drew("1 / 3"));
+  CHECK(first.target.outlined(pager.pill));
+  bool linesInside = !first.target.lines.empty();
+  for (const auto& segment : first.target.lines) {
+    linesInside = linesInside && pointInside(pager.pill, segment.a) && pointInside(pager.pill, segment.b);
+  }
+  CHECK(linesInside);
+  // Two strokes per chevron, two dividers.
+  CHECK(first.target.lines.size() == 6);
+  // The count sits inside the pill, one line of it.
+  CHECK(first.target.texts.size() == 1);
+  for (const auto& run : first.target.texts) CHECK(insideRect(pager.pill, run.rect) && run.style.maxLines == 1);
+}
+
+// Whether a dithered ground was laid over the left or the right end of the pill.
+bool dimmedAt(const Rendered& out, const studyui::CardPagerLayout& pager, const bool right) {
+  for (size_t i = 0; i < out.target.fills.size(); ++i) {
+    if (out.target.fillPaints[i].kind != fui::PaintKind::Dither) continue;
+    const fui::Rect& rect = out.target.fills[i];
+    const int centre = rect.x + rect.width / 2;
+    if (right ? centre > pager.pill.x + pager.pill.width / 2 : centre < pager.pill.x + pager.pill.width / 2) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void testStudyPagerDimsTheSpentArrow() {
+  const studyui::CardPagerLayout pager = studyui::cardPagerLayout(studyCardBody());
+  // A control that cannot act dims; it does not disappear
+  // (docs/design-language.md). Both arrows are always drawn.
+  Rendered first;
+  studyui::drawCardPager(first.target, pager, 0, 3);
+  CHECK(dimmedAt(first, pager, false));
+  CHECK(!dimmedAt(first, pager, true));
+
+  Rendered middle;
+  studyui::drawCardPager(middle.target, pager, 1, 3);
+  CHECK(middle.target.drew("2 / 3"));
+  CHECK(!dimmedAt(middle, pager, false));
+  CHECK(!dimmedAt(middle, pager, true));
+
+  Rendered last;
+  studyui::drawCardPager(last.target, pager, 2, 3);
+  CHECK(last.target.drew("3 / 3"));
+  CHECK(!dimmedAt(last, pager, false));
+  CHECK(dimmedAt(last, pager, true));
+  CHECK(last.target.lines.size() == first.target.lines.size());
+}
+
+void testStudyPagerArrowsAreWhereTheyAreDrawn() {
+  const studyui::CardPagerLayout pager = studyui::cardPagerLayout(studyCardBody());
+  const int midY = pager.pill.y + pager.pill.height / 2;
+  using Hit = studyui::CardPagerHit;
+  // On each chevron, and beside it out to the edge of the band.
+  CHECK(studyui::cardPagerHit(pager, pager.pill.x + 22, midY) == Hit::Previous);
+  CHECK(studyui::cardPagerHit(pager, pager.pill.right() - 22, midY) == Hit::Next);
+  CHECK(studyui::cardPagerHit(pager, 2, pager.band.y + 2) == Hit::Previous);
+  CHECK(studyui::cardPagerHit(pager, 477, pager.band.bottom() - 2) == Hit::Next);
+  // The count between them takes the tap and is neither.
+  CHECK(studyui::cardPagerHit(pager, pager.pill.x + pager.pill.width / 2, midY) == Hit::Between);
+  // Above the band is the card, and below it the footer.
+  CHECK(studyui::cardPagerHit(pager, pager.pill.x + 22, pager.band.y - 1) == Hit::Outside);
+  CHECK(studyui::cardPagerHit(pager, pager.pill.x + 22, pager.band.bottom()) == Hit::Outside);
 }
 
 void testStudyWarnsWhenAReviewDidNotSave() {
@@ -14110,6 +14447,69 @@ void testWikipediaArticleChromeLeavesThePageItsRoom() {
   }
 }
 
+// The article band's two chips mirror each other, and the progress band at
+// the foot keeps the page's margin above the glass. The back chip sat 4px from
+// the left edge beside a contents chip 12px from the right, and the progress
+// band 4px from the bottom.
+void testWikipediaArticleChromeKeepsItsMargins() {
+  wikiui::ArticleChromeModel model;
+  model.title = "Photosynthesis";
+  model.back = true;
+  model.contents = true;
+  wikiui::ArticleFooterModel footer;
+  footer.left = "12 of 87";
+  footer.right = "Light-dependent reactions";
+  footer.page = 12;
+  footer.total = 87;
+  Rendered out;
+  buildWikiArticleChrome(out, model, footer);
+  int leftChip = 480;
+  int rightChip = -1;
+  for (const auto& stroke : out.target.strokes) {
+    if (stroke.rect.bottom() > toybox::kHeaderHeight) continue;
+    leftChip = std::min<int>(leftChip, stroke.rect.x);
+    rightChip = std::max<int>(rightChip, stroke.rect.right());
+  }
+  CHECK(leftChip < 60 && rightChip > 420);
+  CHECK(leftChip == 480 - rightChip);
+  CHECK(out.tap(leftChip + 20, toybox::kHeaderHeight / 2).action == wikiui::ActionPrevious);
+  int barBottom = -1;
+  for (const auto& fill : out.target.fills) {
+    if (fill.y > 700 && fill.height >= 1 && fill.height <= 5) barBottom = std::max<int>(barBottom, fill.bottom());
+  }
+  CHECK(barBottom > 700);
+  CHECK(barBottom <= 800 - toybox::kMargin);
+}
+
+// The recent trail is divided, not underlined: the last row's own rule sat 8px
+// over the count line's hairline and read as a double line.
+void testWikipediaRecentTrailIsDivided() {
+  wikiui::SearchModel home;
+  home.continueTitle = "Photosynthesis";
+  static const char* kRecent[] = {"Ray Charles", "Polish-Russian War (1654-1667)", "Kluane", "Bern", "Tokyo"};
+  for (int i = 0; i < 5; ++i) home.recent[i].title = kRecent[i];
+  home.recentCount = 5;
+  home.footer = "50,034 ARTICLES, MAY 2026";
+  Rendered out;
+  buildWikiSearch(out, home);
+  const FakeTarget::TextRun* caption = out.target.find("RECENT");
+  const FakeTarget::TextRun* count = out.target.find(home.footer);
+  CHECK(caption != nullptr && count != nullptr);
+  if (caption == nullptr || count == nullptr) return;
+  std::vector<int> rules;
+  for (const auto& fill : out.target.fills) {
+    if (fill.height == toybox::kHairline && fill.width > 300) rules.push_back(fill.y);
+  }
+  std::sort(rules.begin(), rules.end());
+  int rows = 0;
+  for (int i = 0; i < 5; ++i) rows += out.target.find(kRecent[i]) != nullptr ? 1 : 0;
+  CHECK(rows >= 2);
+  int between = 0;
+  for (const int y : rules) between += y > caption->rect.bottom() && y < count->rect.y - 8 ? 1 : 0;
+  CHECK(between == rows - 1);
+  for (size_t i = 1; i < rules.size(); ++i) CHECK(rules[i] - rules[i - 1] >= toybox::kGutter);
+}
+
 void testWikipediaContentsRowsCarryTheHeading() {
   static const char* kHeadings[] = {"Quick facts",     "Overview",    "Light-dependent reactions",
                                     "Carbon fixation", "History",     "Evolution",
@@ -14697,6 +15097,35 @@ void aNoteAsleepIsReadOnlyAndTaller() {
         "asleep, the first page holds MORE rows: the footer's height went to the list", __LINE__);
 }
 
+// Report #652, "How to edit a note?". Changing a note's words happens on the
+// phone page and nowhere else, and the menu row that opens it said TYPE ON
+// YOUR PHONE: nothing on any Notes screen said edit, which is the word he
+// looked for. The row says it now, on a note and on a list alike.
+void theMenuSaysWhereEditingIs() {
+  for (const bool isList : {false, true}) {
+    Rendered out;
+    const fui::DeviceContext ctx = device();
+    const fui::InputSnapshot noInput{};
+    toybox::Frame frame(out.target, ctx, noInput, out.interactions);
+    toybox::Screen screen(frame, toybox::themeTokens());
+    notesui::MenuModel model;
+    model.title = "Errands";
+    model.isList = isList;
+    notesui::buildMenu(screen, model);
+
+    const FakeTarget::TextRun* row = nullptr;
+    for (const auto& run : out.target.texts) {
+      if (run.text.rfind("EDIT", 0) == 0) row = &run;
+    }
+    check(row != nullptr, "a menu row starts with EDIT", __LINE__);
+    if (row == nullptr) continue;
+    check(drewLabelWhole(out, row->text.c_str()), "and is drawn whole", __LINE__);
+    check(out.tap(static_cast<int16_t>(row->rect.x + 20), static_cast<int16_t>(row->rect.y + row->rect.height / 2))
+                  .action == notesui::ActionUsePhone,
+          "and opens the phone page, where editing happens", __LINE__);
+  }
+}
+
 }  // namespace notestest
 
 namespace wordletest {
@@ -14884,6 +15313,7 @@ int main() {
   notestest::anItemCutAtItsCapStillSaysSo();
   notestest::everyItemIsOnThePageItsSaidToBeginOn();
   notestest::aHugeUnbrokenRunIsCheapAndLosesNothing();
+  notestest::theMenuSaysWhereEditingIs();
   heartsDrawsNothingOnTopOfAnythingElse();
   heartsPassOwnsTheTable();
   heartsScoreSaysWhatHappened();
@@ -14924,6 +15354,8 @@ int main() {
   testTriviaDrawsNoOptionsWithoutAQuestion();
   testWikipediaSearchRowsCarryTheirIndex();
   testWikipediaArticleChromeLeavesThePageItsRoom();
+  testWikipediaArticleChromeKeepsItsMargins();
+  testWikipediaRecentTrailIsDivided();
   testWikipediaContentsRowsCarryTheHeading();
   testWikipediaInstallSaysTheAddressFirst();
   testTriviaSettingsShowsTheToggleAndItsState();
@@ -14955,6 +15387,7 @@ int main() {
   testAFrozenCardLooksDifferent();
   testSearchingAsksNothing();
   testTheSudokuGridAndItsHitTestAreExactInverses();
+  testHeaderTextClearsItsChips();
   testSudokuBoxRulesStandOutFromCellLines();
   testTheSudokuPadAndItsHitTestAreExactInverses();
   testTheSudokuBoardSpendsThreeInteractions();
@@ -15093,13 +15526,19 @@ int main() {
   testABoardShowsWhoYouArePlaying();
   testBothSeatsWearTheirOwnFace();
   testStudyDeckLeadsWithTheCount();
+  testStudyDeckBracketsSitOnTheMargin();
   testStudyHeadlineIsTheHitTarget();
+  testStudyDeckUnderAWrongClockSaysTheDateNotTheCount();
   testStudyDeckRowSwitchesOnlyWhenThereIsSomewhereToGo();
   testStudyOffersNothingWhenNothingIsDue();
   testStudyForecastBarsStayInsideTheirPanel();
   testStudyRecordShowsTheStreak();
   testStudyPanelSaysSoWhenItHasNothing();
   testStudyWarnsWhenAReviewDidNotSave();
+  testStudyPagerTakesTheFootOfTheCard();
+  testStudyPagerDrawsOnlyForALongFace();
+  testStudyPagerDimsTheSpentArrow();
+  testStudyPagerArrowsAreWhereTheyAreDrawn();
   testInsiderCitizenIsNeverToldTheWord();
   testInsiderFaceDownCardShowsNothingAtAll();
   testInsiderFaceDownCardTakesATapAnywhere();

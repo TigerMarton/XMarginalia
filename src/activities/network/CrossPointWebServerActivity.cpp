@@ -446,21 +446,18 @@ void CrossPointWebServerActivity::loop() {
       // Reset watchdog BEFORE processing - HTTP header parsing can be slow
       resetTaskWatchdogIfSubscribed();
 
-      // Process HTTP requests in tight loop for maximum throughput
-      // More iterations = more data processed per main loop cycle
-      constexpr int MAX_ITERATIONS = 500;
+      // Process active HTTP requests in bounded bursts; stop as soon as idle so
+      // empty polls do not sleep 32ms in a tight loop.
+      constexpr int MAX_ITERATIONS = 32;
       for (int i = 0; i < MAX_ITERATIONS && webServer->isRunning(); i++) {
-        webServer->handleClient();
+        const bool didHttpWork = webServer->handleClient();
         if (leaveRequested) {
           onGoHome();
           return;
         }
-        // Reset watchdog every 32 iterations
-        if ((i & 0x1F) == 0x1F) {
+        // Reset watchdog every 16 iterations
+        if ((i & 0x0F) == 0x0F) {
           resetTaskWatchdogIfSubscribed();
-        }
-        // Yield and check for exit button every 64 iterations
-        if ((i & 0x3F) == 0x3F) {
           yield();
           // Pump input inside this blocking loop so exit events remain responsive.
           mappedInput.update(true);
@@ -470,6 +467,10 @@ void CrossPointWebServerActivity::loop() {
             onGoHome();
             return;
           }
+        }
+        if (!didHttpWork) {
+          delay(1);
+          break;
         }
       }
       lastHandleClientTime = millis();

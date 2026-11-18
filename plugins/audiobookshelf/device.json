@@ -1,0 +1,178 @@
+{
+  "title": "Audiobookshelf",
+  "description": "Browse, download, and sync ebook reading progress with your Audiobookshelf server.",
+  "token": {
+    "file": "token.json",
+    "path": "token"
+  },
+  "config": {
+    "file": "config.json"
+  },
+  "auth": {
+    "type": "password",
+    "request": {
+      "url": "{cfg.server_url}/login",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": "{\"username\":\"{cfg.username}\",\"password\":\"{cfg.password}\"}"
+    },
+    "token_path": "user.token"
+  },
+  "browse": {
+    "format": "json",
+    "lists": [
+      {
+        "title": "Continue Reading",
+        "url": "{cfg.server_url}/api/me/items-in-progress?limit=50",
+        "items": "libraryItems"
+      }
+    ],
+    "lists_url": "{cfg.server_url}/api/libraries",
+    "lists_headers": {
+      "Authorization": "Bearer {token}"
+    },
+    "lists_items": "libraries",
+    "lists_fields": {
+      "title": "name",
+      "id": "id"
+    },
+    "lists_filter": {
+      "field": "mediaType",
+      "equals": "book"
+    },
+    "list_views": [
+      {
+        "title": "Recently Added",
+        "url": "{cfg.server_url}/api/libraries/{list_id}/items?filter=ebooks.ZWJvb2s%3D&sort=addedAt&desc=1&limit={limit}&page={page0}"
+      },
+      {
+        "title": "By Title (A-Z)",
+        "url": "{cfg.server_url}/api/libraries/{list_id}/items?filter=ebooks.ZWJvb2s%3D&sort=media.metadata.title&desc=0&limit={limit}&page={page0}"
+      },
+      {
+        "title": "By Author (A-Z)",
+        "url": "{cfg.server_url}/api/libraries/{list_id}/items?filter=ebooks.ZWJvb2s%3D&sort=media.metadata.authorName&desc=0&limit={limit}&page={page0}"
+      },
+      {
+        "title": "Search Books",
+        "search_prompt": true,
+        "search": {
+          "url": "{cfg.server_url}/api/libraries/{list_id}/search?q={query}&limit=16",
+          "items": "book"
+        }
+      },
+      {
+        "title": "Search by Author",
+        "search_prompt": true,
+        "search": {
+          "url": "{cfg.server_url}/api/libraries/{list_id}/search?q={query}&limit=16",
+          "items": "authors",
+          "require_url": false,
+          "fields": {
+            "id": "id",
+            "title": "name"
+          }
+        },
+        "drill": {
+          "url": "{cfg.server_url}/api/authors/{id_enc}?include=items",
+          "items": "libraryItems",
+          "require_url": true,
+          "fields": {
+            "id": "id",
+            "title": "media.metadata.title",
+            "author": "media.metadata.authorName",
+            "url": "media.ebookFormat",
+            "description": "media.metadata.description"
+          }
+        }
+      }
+    ],
+    "url": "{cfg.server_url}/api/libraries/{list_id}/items?filter=ebooks.ZWJvb2s%3D&sort=addedAt&desc=1&limit={limit}&page={page0}",
+    "headers": {
+      "Authorization": "Bearer {token}"
+    },
+    "page_size": 20,
+    "items": "results",
+    "require_fields": ["url"],
+    "fields": {
+      "id": "id",
+      "title": "media.metadata.title",
+      "author": "media.metadata.authorName",
+      "url": "media.ebookFormat",
+      "description": "media.metadata.description"
+    },
+    "search": {
+      "url": "{cfg.server_url}/api/libraries/{list_id}/search?q={query}&limit=16",
+      "items": "book",
+      "fields": {
+        "id": "libraryItem.id",
+        "title": "libraryItem.media.metadata.title",
+        "author": "libraryItem.media.metadata.authorName",
+        "url": "libraryItem.media.ebookFormat",
+        "description": "libraryItem.media.metadata.description"
+      }
+    }
+  },
+  "download": {
+    "url": "{cfg.server_url}/api/items/{id_enc}/ebook",
+    "method": "GET",
+    "headers": {
+      "Authorization": "Bearer {token}"
+    },
+    "dest_dir": "/Books/Audiobookshelf",
+    "filename": "{title}.epub",
+    "sidecar": {
+      "path": "{dest}.meta.json",
+      "body": "{\"abs_item_id\":\"{id}\"}"
+    }
+  },
+  "events": {
+    "reader.session": {
+      "require_meta": "abs_item_id",
+      "request": {
+        "url": "{cfg.server_url}/api/me/progress/{meta.abs_item_id}",
+        "method": "PATCH",
+        "headers": {
+          "Authorization": "Bearer {token}",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"ebookProgress\":{event.progress},\"isFinished\":{event.finished}}"
+      }
+    },
+    "sleep.enter": {
+      "require_meta": "abs_item_id",
+      "request": {
+        "url": "{cfg.server_url}/api/me/progress/{meta.abs_item_id}",
+        "method": "PATCH",
+        "headers": {
+          "Authorization": "Bearer {token}",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"ebookProgress\":{event.progress},\"isFinished\":{event.finished}}"
+      }
+    }
+  },
+  "sync": {
+    "require_meta": "abs_item_id",
+    "pull": {
+      "url": "{cfg.server_url}/api/me/progress/{meta.abs_item_id}",
+      "method": "GET",
+      "headers": {
+        "Authorization": "Bearer {token}"
+      },
+      "progress_path": "ebookProgress",
+      "location_path": "ebookLocation"
+    },
+    "push": {
+      "url": "{cfg.server_url}/api/me/progress/{meta.abs_item_id}",
+      "method": "PATCH",
+      "headers": {
+        "Authorization": "Bearer {token}",
+        "Content-Type": "application/json"
+      },
+      "body": "{\"ebookProgress\":{sync.progress},\"ebookLocation\":\"{sync.location}\",\"isFinished\":{sync.finished}}"
+    }
+  }
+}

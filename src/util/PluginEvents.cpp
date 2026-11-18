@@ -7,7 +7,9 @@
 #include <esp_random.h>
 #include <time.h>
 
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -321,6 +323,29 @@ std::string drainSubstituted(std::string tpl, const std::string& token, const pl
   snprintf(tsBuf, sizeof(tsBuf), "%lld", ts);
   pluginhttp::substituteAll(tpl, "{event.ts}", tsBuf);
   pluginhttp::substituteAll(tpl, "{event.id}", id);
+  // Derived decimal progress [0.0000..1.0000] and finished boolean from
+  // end_progress_bp (basis points, 0..10000) or end_percent / percent (0..100).
+  float progressFrac = -1.0f;
+  bool finished = false;
+  if (!vars["end_progress_bp"].isNull()) {
+    const int bp = atoi(pluginhttp::variantToString(vars["end_progress_bp"]).c_str());
+    progressFrac = std::clamp(static_cast<float>(bp) / 10000.0f, 0.0f, 1.0f);
+    finished = bp >= 10000;
+  } else if (!vars["end_percent"].isNull()) {
+    const int pct = atoi(pluginhttp::variantToString(vars["end_percent"]).c_str());
+    progressFrac = std::clamp(static_cast<float>(pct) / 100.0f, 0.0f, 1.0f);
+    finished = pct >= 100;
+  } else if (!vars["percent"].isNull()) {
+    const int pct = atoi(pluginhttp::variantToString(vars["percent"]).c_str());
+    progressFrac = std::clamp(static_cast<float>(pct) / 100.0f, 0.0f, 1.0f);
+    finished = pct >= 100;
+  }
+  if (progressFrac >= 0.0f) {
+    char progBuf[16];
+    snprintf(progBuf, sizeof(progBuf), "%.4f", static_cast<double>(progressFrac));
+    pluginhttp::substituteAll(tpl, "{event.progress}", progBuf);
+    pluginhttp::substituteAll(tpl, "{event.finished}", finished ? "true" : "false");
+  }
   for (JsonPairConst kv : vars.as<JsonObjectConst>()) {
     pluginhttp::substituteAll(tpl, (std::string("{event.") + kv.key().c_str() + "}").c_str(),
                               pluginhttp::variantToString(kv.value()));

@@ -418,8 +418,16 @@
         // recovery partition that this image (its own table, its own app at
         // 0x10000) would write straight over. Read the table on the device and
         // leave a Picco exactly as it was found, like a wrong chip above.
-        return loader.readFlash(OFF_PARTITIONS, PARTITION_TABLE_SIZE).then(function (table) {
-          if (hasVendorRecovery(table)) {
+        // Best effort: a read that fails must never stop an X4 Pro or a Sticky
+        // installing, so an unreadable table installs exactly as before the
+        // check existed.
+        return loader
+          .readFlash(OFF_PARTITIONS, PARTITION_TABLE_SIZE)
+          .catch(function () {
+            return null;
+          })
+          .then(function (table) {
+          if (table && hasVendorRecovery(table)) {
             return loader
               .after("no_reset_stub")
               .catch(function () {})
@@ -430,7 +438,7 @@
                 throw new Error(
                   "This device keeps its maker's partition table, as the BOOX Picco does. " +
                     "This installer would write over its recovery partition, so nothing was written. " +
-                    "A Picco is installed into its app slot only; see the CrossPlay README.",
+                    "A Picco is installed into its app slot only; see the XMarginalia README.",
                 );
               });
           }

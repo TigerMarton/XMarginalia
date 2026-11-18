@@ -37,8 +37,8 @@ void testConfigParsing() {
   CHECK(!disabledCfg.isValid());
 
   companion::CompanionConfig urlWithPathCfg;
-  CHECK(companion::parseConfigJson(
-      R"({"url": "https://companion.example.com/api/ereader/v1/query", "api_key": "k"})", urlWithPathCfg));
+  CHECK(companion::parseConfigJson(R"({"url": "https://companion.example.com/api/ereader/v1/query", "api_key": "k"})",
+                                   urlWithPathCfg));
   CHECK(urlWithPathCfg.host == "companion.example.com");
   CHECK(!urlWithPathCfg.useHttp);
   CHECK(urlWithPathCfg.baseUrl() == "https://companion.example.com");
@@ -48,6 +48,13 @@ void testConfigParsing() {
   CHECK(httpLanCfg.host == "192.168.1.50:8095");
   CHECK(httpLanCfg.useHttp);
   CHECK(httpLanCfg.baseUrl() == "http://192.168.1.50:8095");
+  companion::CompanionConfig fallbackCfg;
+  CHECK(companion::parseConfigJson(
+      R"({"server_url":"https://abs.example.com","companion_url":"https://ai.example.com/","companion_api_key":"k2"})",
+      fallbackCfg));
+  CHECK(fallbackCfg.host == "ai.example.com");
+  CHECK(fallbackCfg.apiKey == "k2");
+  CHECK(fallbackCfg.isValid());
 }
 
 void testAnchorExtraction() {
@@ -64,6 +71,7 @@ void testAnchorExtraction() {
 
 void testQuerySerializationAndResponseParsing() {
   companion::CompanionQuery q;
+  q.absItemId = "li_8abc123def";
   q.bookUuid = "urn:uuid:1234-5678";
   q.isbn = "9780765326355";
   q.koMd5 = "aabbccddeeff00112233445566778899";
@@ -81,7 +89,10 @@ void testQuerySerializationAndResponseParsing() {
   q.actionType = "who_is";
 
   const std::string body = companion::buildQueryJson(q);
+  CHECK(body.find("\"abs_item_id\":\"li_8abc123def\"") != std::string::npos);
   CHECK(body.find("\"book_uuid\":\"urn:uuid:1234-5678\"") != std::string::npos);
+  CHECK(companion::extractAbsItemId(R"({"abs_item_id":"li_9xyz","title":"T"})") == "li_9xyz");
+  CHECK(companion::extractAbsItemId(R"({"title":"NoId"})").empty());
   CHECK(body.find("\"isbn\":\"9780765326355\"") != std::string::npos);
   CHECK(body.find("\"spine_index\":4") != std::string::npos);
   CHECK(body.find("\"visible_offset\":1820") != std::string::npos);

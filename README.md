@@ -21,15 +21,14 @@
 
 ![CrossPlay on the Xteink X4 Pro](site/assets/shots/og.png)
 
-The **Xteink X4 Pro**, **Seeed reTerminal Sticky**, **M5Stack PaperMono / Lite**, and **Onyx BOOX Picco** are e-ink
+The **Xteink X4 Pro**, **Seeed reTerminal Sticky**, **M5Stack PaperMono / Lite**, **Onyx BOOX Picco**, and **EEGO A4** are e-ink
 devices with an 800x480 panel (480x800 portrait on Picco), capacitive touch and physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 **XMarginalia** (CrossMarginalia) is a new e-reader and tabletop firmware product built as a fork of
-**CrossPoint**, **CrossInk**, and **CrossPlay**. It unifies CrossPoint's EPUB engine, CrossInk's UI themes,
-status bar customization, OPDS browser, reading stats, and typography controls, CrossPlay's **26 games and 8 apps**,
-the **11-mode Tabletop suite**, **BOOX Picco** hardware support, **Nearby File Transfer**, and an optional
-spoiler-free **AI Companion**.
+**CrossPoint**, **CrossInk**, and **CrossPlay**. It unifies CrossPoint's EPUB engine & SD plugin system, CrossInk's UI themes,
+status bar customization (including restored **Bottom Mid-Left / Mid-Right** clock slots), reading stats, and typography controls, CrossPlay's **26 games and 8 apps**,
+the **11-mode Tabletop suite**, **BOOX Picco** & **EEGO A4** hardware support, **Nearby File Transfer**, an official **Audiobookshelf SD Plugin** (`plugins/audiobookshelf/`), and an optional spoiler-free **AI Companion**.
 
 ## Try it without a device
 
@@ -89,9 +88,12 @@ the import lands a real pack instead of failing on an unreachable host.
 
 XMarginalia brings CrossPlay up to parity with **CrossPoint** and **CrossInk** while adding **BOOX Picco** compatibility:
 
-- **CrossInk UI & Reader**: CrossInk UI themes, customizable status bar items, OPDS catalog browser, Phase 4 typography/layout and guide dots, reading statistics and streaks with multi-device sync, and a unified controls hierarchy.
+- **CrossInk UI & Reader**: CrossInk UI themes, customizable status bar items (including Left / Mid-Left / Center / Mid-Right / Right bottom lanes), OPDS catalog browser under **File Transfer**, Phase 4 typography/layout and guide dots, tilt sensitivity setting, reading statistics and streaks with multi-device sync, and a unified controls hierarchy.
+- **Direct Audiobookshelf SD Plugin (`plugins/audiobookshelf/`)**: Browse libraries, search books, download EPUBs with `.meta.json` sidecars, queue offline progress pushes, and run two-way progress sync directly against Audiobookshelf from **Home → Plugins** and **Reader Menu → Sync Progress** without an external OPDS or KOSync server.
 - **Nearby File Transfer (CIFT)**: Send and receive EPUBs and wallpapers directly over ESP-NOW between **Onyx BOOX Picco**, **Xteink X4 Pro**, and **CrossInk** devices (`Send to Nearby Device` / `Receive File`).
-- **BOOX Picco Support**: Native 480×800 portrait layout, hardware toggle switch sleep control, PSRAM display and wolfSSL TLS buffers, and app-only `0xE0000` flashing that preserves the factory `safeboot` recovery partition.
+- **BOOX Picco & EEGO A4 Support**: Native 480×800 portrait layout, hardware toggle switch sleep control, PSRAM display and all-PSRAM wolfSSL TLS buffers (`freeink-sdk`), app-only `0xE0000` flashing (Picco), and **EEGO A4 / A4 Lite** (`eego_a4` / `gh_release_eego_a4`) builds.
+
+For a full itemized breakdown of everything in XMarginalia that differs from upstream CrossPoint, CrossInk, and CrossPlay, see [docs/xmarginalia-differences.md](docs/xmarginalia-differences.md) and [docs/picco.md](docs/picco.md).
 
 ### Spoiler-Free AI Companion
 
@@ -119,9 +121,13 @@ browser are theirs and stay theirs.
 ### Two devices, nothing to type
 
 Twelve of the games play over **PLAY NEARBY**: Chess, Checkers, Connect Four,
-Yahtzee, Knucklebones, Battleship, Jaipur, Sea Salt, Toy Battle, Go, Hex and Tabletop. Put
-two devices next to each other and they find one another. No pairing screen, no
-room code, no account, no router, no internet.
+Yahtzee, Knucklebones, Battleship, Jaipur, Sea Salt, Toy Battle, Go, Hex and
+Tabletop. Across those 12 shelf entries, 21 total titles play over **PLAY NEARBY**
+(including Tabletop Reversi, Tabletop Mancala, Tabletop Morris,
+Tabletop Onitama, Tabletop Liars Dice, Tabletop Dobutsu, Tabletop Backgammon,
+Tabletop Santorini, Tabletop Quoridor, and Tabletop Dominoes). Put two devices
+next to each other and they find one another. No pairing screen, no room code,
+no account, no router, no internet.
 
 Readers can also exchange books and artwork directly: select **Send to Nearby Device** from the book options menu in the Library or File Browser, and choose **Receive File** under File Transfer on the other reader. Compatible across Onyx BOOX Picco, Xteink X4 Pro, and CrossInk devices.
 
@@ -278,8 +284,11 @@ Most of the shelf never touches the network. Of the parts that do:
 git submodule update --init --recursive   # freeink-sdk, and nothing builds without it
 pio run -e x4pro                          # X4 Pro firmware
 pio run -e gh_release_picco               # BOOX Picco firmware
+pio run -e gh_release_eego_a4             # EEGO A4 firmware
 pio run -e simulator_x4_pro               # X4 Pro simulator (SDL2 + FreeRTOS shim)
 pio run -e simulator_picco                # BOOX Picco simulator (480x800 portrait)
+./scripts_local/build-release.sh          # build x4pro, picco, eego_a4 + Audiobookshelf plugin zip
+./scripts_local/flash-device.sh           # auto-detect connected reader & flash safely
 ./scripts_local/check.sh                  # host tests and builds
 ```
 

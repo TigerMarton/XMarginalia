@@ -260,7 +260,11 @@ bool parseConfigJson(const std::string_view json, CompanionConfig& out) {
   out = CompanionConfig{};
   std::string rawHost;
   if (!extractJsonStringField(json, "host", rawHost)) {
-    extractJsonStringField(json, "url", rawHost);
+    if (!extractJsonStringField(json, "url", rawHost)) {
+      if (!extractJsonStringField(json, "companion_host", rawHost)) {
+        extractJsonStringField(json, "companion_url", rawHost);
+      }
+    }
   }
   std::string_view trimmedHost = rawHost;
   while (!trimmedHost.empty() && isSpaceChar(trimmedHost.front())) trimmedHost.remove_prefix(1);
@@ -269,6 +273,9 @@ bool parseConfigJson(const std::string_view json, CompanionConfig& out) {
   extractJsonStringField(json, "api_key", out.apiKey);
   if (out.apiKey.empty()) {
     extractJsonStringField(json, "apiKey", out.apiKey);
+  }
+  if (out.apiKey.empty()) {
+    extractJsonStringField(json, "companion_api_key", out.apiKey);
   }
 
   bool explicitEnabled = true;
@@ -323,6 +330,9 @@ std::string buildQueryJson(const CompanionQuery& query) {
   out.push_back('{');
   bool first = true;
 
+  if (!query.absItemId.empty()) {
+    appendKeyValueString(out, "abs_item_id", query.absItemId, first);
+  }
   appendKeyValueString(out, "book_uuid", query.bookUuid, first);
   appendKeyValueString(out, "isbn", query.isbn, first);
   appendKeyValueString(out, "asin", query.asin, first);
@@ -343,6 +353,12 @@ std::string buildQueryJson(const CompanionQuery& query) {
 
   out.push_back('}');
   return out;
+}
+
+std::string extractAbsItemId(const std::string_view metaJson) {
+  std::string id;
+  if (!extractJsonStringField(metaJson, "abs_item_id", id)) return {};
+  return id;
 }
 
 bool parseQueryResponse(const std::string_view json, CompanionResponse& out) {

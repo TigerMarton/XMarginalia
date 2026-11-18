@@ -171,9 +171,19 @@ def upstream_mentions(token):
     return _UP_SEEN[token]
 
 
+# Upstream CrossPoint PRs selectively cherry-picked into XMarginalia before a
+# full crosspoint/develop merge (so git merge-base still predates them).
+UPSTREAM_CHERRY_PICKS = {
+    "STR_SHOW_FILE_EXTENSIONS",  # crosspoint-reader #4450 (3a5bfac37)
+    "showFileExtensions",
+}
+
+
 def is_ours(row):
     """A row is upstream's if upstream's own sources mention it."""
     for token in (row["key"], row["id"], row["val"]):
+        if token in UPSTREAM_CHERRY_PICKS:
+            return False
         if token and upstream_mentions(token):
             return False
     return True

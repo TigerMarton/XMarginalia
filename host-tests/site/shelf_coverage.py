@@ -177,7 +177,9 @@ else:
         if got != want:
             print(f"the README says {stated} {kind} and {table} in Shelf.cpp has {want}")
 
-nearby = re.search(r"(\d+|[A-Za-z]+) of the games play over \*\*PLAY NEARBY\*\*", readme)
+nearby = re.search(r"(\d+|[A-Za-z]+) total titles play over \*\*PLAY NEARBY\*\*", readme) or re.search(
+    r"(\d+|[A-Za-z]+) of the games play over \*\*PLAY NEARBY\*\*", readme
+)
 if not nearby:
     print("the README no longer counts the PLAY NEARBY games, so the count cannot be checked")
 elif ids and as_number(nearby.group(1)) != len(ids):

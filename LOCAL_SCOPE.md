@@ -252,17 +252,21 @@ swallow machinery (now a one-line wrapper kept for Minesweeper's flag hold).
 After that merge `base` fast-forwards along `crosspoint/develop` as before;
 the next syncs should be routine again until upstream's next big line.
 
-## CrossInk Integration & Multi-Upstream Synchronization
+## CrossInk Integration, XMarginalia Extensions & Multi-Upstream Synchronization
 
-This fork incorporates the high-UX reading enhancements from **CrossInk** (`uxjulia/CrossInk`), unified for both the **Xteink X4 Pro** and the **Onyx BOOX Picco**:
+This fork extends CrossPoint and CrossPlay across **Xteink X4 Pro**, **Seeed reTerminal Sticky**, **M5Stack PaperMono / Lite**, **Onyx BOOX Picco**, and **EEGO Reader A4 / A4 Lite**. See [docs/xmarginalia-differences.md](docs/xmarginalia-differences.md) for the complete itemized feature and seam inventory:
 
-- **P2P Nearby Transfer**: Direct device-to-device book transfer over ESP-NOW (`NearbyBookTransferActivity`) with mutual exclusion against CrossPlay's multiplayer `LinkRadio`.
-- **Hardware-Backed Reading Stats**: Uses dedicated I2C RTC (BM8563) on BOOX Picco for offline timestamped stats; monotonic accumulation + SNTP on X4 Pro.
-- **Per-Book Typography & Layout**: Per-book font size, line spacing, margins, and CSS toggle saved in `.crosspoint/epub_<hash>/settings.json`.
-- **Reading Visual Enhancements**: Eye-pacing guide dots, forced first-line paragraph indents, and markup styling (`<mark>`, `<s>`, `<del>`).
-- **7-Slot Modular Status Bar**: Two independent lanes (Top and Bottom), Left/Center/Right slots, repositionable progress bar (Top/Bottom), and new UI themes (**Dashboard** and **Minimal**).
-- **Multi-Upstream Synchronization Tooling**: `scripts_local/sync-all.sh` audits seam boundaries, verifies partition safety (`scripts_local/check-partitions.sh`), and executes master host unit tests (`host-tests/run-all.sh`).
-- **Partition & Flash Safety**: Enforces strict flash offset safety: BOOX Picco factory binary is strictly at `0xE0000` (preserving vendor bootloader and `safeboot`), while X4 Pro is at `0x10000`.
+- **Controls & Hardware Inputs**: Master reader touch toggle, edge gestures, tilt sensitivity, side-button long-press/combo actions, and CrossInk power-button shortcuts (`doubleClickPwrLight` + `PWR_CONFIRM` / `PWR_BOOKMARK` / `PWR_SYNC` / `PWR_READER_MENU`), alongside EEGO A4 UID readout (`HalSystem::getEegoUid`), 500 ms idle, and 400 ms wake hold.
+- **P2P Nearby Transfer**: Direct device-to-device EPUB/wallpaper transfer over ESP-NOW (`NearbyBookTransferActivity`) with mutual exclusion against CrossPlay's multiplayer `LinkRadio`.
+- **Hardware-Backed Reading Stats**: Dedicated I2C RTC and `GlobalReadingStats` / `BookReadingStats` / `BookStatsActivity` with reading streaks and multi-device sync.
+- **Per-Book Typography & Layout**: `BookSettings`, Focus Reading (`focusReadingEnabled`), eye-pacing guide dots, forced first-line paragraph indents, markup styling (`<mark>`, `<s>`, `<del>`), and shortened formatting indicators.
+- **Modular 8-Slot Status Bar & Themes**: Configurable Top (`topLeft`/`topCenter`/`topRight`) and 5-slot Bottom (`bottomLeft`/`bottomMidLeft`/`bottomCenter`/`bottomMidRight`/`bottomRight`) lanes, repositionable progress bar (with EEGO A4 slim bottom-inset rendering), and **Dashboard** / **Minimal** UI themes.
+- **Audiobookshelf SD Plugin (`plugins/audiobookshelf/`)**: Direct library browsing, search, EPUB + `.meta.json` download, existing SD book matcher, offline progress outbox, and two-way in-reader CFI/progress sync (packaged into `dist/xmarginalia-audiobookshelf-plugin.zip`).
+- **Spoiler-Free AI Companion (`src/apps_local/companion/`, `server/companion-bridge/`)**: Progress-gated character/term lookup and chapter recaps backed by a self-hosted LLM bridge.
+- **Tabletop Suite (`src/apps_local/tabletop/`)**: 10 competitive board/tile/dice games (Solo AI, 2P pass-and-play, ESP-NOW **PLAY NEARBY**) plus a 4-tool virtual sandbox; CrossPlay's `apps_local/rss/` is intentionally excluded.
+- **`freeink-sdk` Customizations (`xmarginalia/sdk-20261117`)**: All-PSRAM wolfSSL allocators in `SecureClient.cpp` (`psramFound()` for every `BOARD_HAS_PSRAM` board), PSRAM `_asyncShadow`, and `Opds/` parser/client enhancements.
+- **Build, Release & Flash Tooling**: `scripts_local/build-release.sh` (builds `gh_release_x4pro`, `gh_release_picco`, `gh_release_eego_a4` and packages plugins), `scripts_local/flash-device.sh` (auto-detecting USB flasher), `scripts/app_only_upload.py` + `scripts_local/app_slot_guard.py` + `scripts_local/check-partitions.sh`, `scripts_local/sync-all.sh`, and `host-tests/run-all.sh`.
+- **Partition & Flash Safety**: Enforces strict flash offset safety: BOOX Picco writes strictly at `0xE0000` (preserving vendor bootloader and `safeboot`), while X4 Pro/EEGO A4 factory binaries start at `0x0` (`app` at `0x10000`).
 
 ## Why this base at all
 

@@ -13,6 +13,7 @@
 #include <OpdsFeedParser.h>
 #include <OpdsPublicationDoc.h>
 #include <OpdsSearchTemplate.h>
+#include <ResumableFetch.h>
 #include <StreamingJsonParser.h>
 #include <Util.h>
 #include <WolfsslCrypto.h>
@@ -350,7 +351,7 @@ void OpdsBookBrowserActivity::fetchFeed(const std::string& path) {
         fail(StrId::STR_SET_CREDENTIALS_FIRST);
         break;
       case freeink::opds::OpdsClient::FetchStatus::AuthFailed:
-        fail(StrId::STR_OPDS_AUTH_FAILED);
+        fail(HttpDownloader::lastAnswerRedirected() ? StrId::STR_FEED_REDIRECTED : StrId::STR_OPDS_AUTH_FAILED);
         break;
       case freeink::opds::OpdsClient::FetchStatus::ParseFailed:
         fail(StrId::STR_PARSE_FEED_FAILED);
@@ -589,18 +590,43 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
   }
 #endif
 
-  const freeink::opds::HttpAuth dlAuth = opdsClient.downloadAuth();
-  std::string dlUser = dlAuth.username;
-  std::string dlPass = dlAuth.password;
-  if (dlAuth.bearer.empty() && dlUser.empty() && !server.username.empty()) {
-    dlUser = server.username;
-    dlPass = server.password;
+  HttpDownloader::DownloadError result;
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    {
+      const freeink::opds::HttpAuth dlAuth = opdsClient.downloadAuth();
+      std::string dlUser = dlAuth.username;
+      std::string dlPass = dlAuth.password;
+      if (dlAuth.bearer.empty() && dlUser.empty() && !server.username.empty()) {
+        dlUser = server.username;
+        dlPass = server.password;
+      }
+      std::vector<HttpDownloader::Header> headers = dlAuth.headers;
+      if (!dlAuth.bearer.empty()) headers.push_back({"Authorization", "Bearer " + dlAuth.bearer});
+      // downloadFile() (CatalogActivity) releases font caches, checks the TLS heap
+      // floor, and pumps cancel input during the transfer.
+      result = downloadFile(downloadUrl, filename, dlUser, dlPass, headers);
+    }
+    if (attempt != 0 || result != HttpDownloader::UNAUTHORIZED || HttpDownloader::lastStatus() != 401 ||
+        HttpDownloader::lastAnswerRedirected() ||
+        freeink::fetchOrigin(downloadUrl) != freeink::fetchOrigin(server.url) || cancelDownload)
+      break;
+    std::string title;
+    {
+      RenderLock lock;
+      title = std::move(statusMessage);
+    }
+    const bool authenticated = opdsClient.authenticateDownload(downloadUrl);
+    {
+      RenderLock lock;
+      statusMessage = std::move(title);
+    }
+    if (opdsClient.tokensDirty()) persistTokens();
+    if (cancelDownload) {
+      result = HttpDownloader::ABORTED;
+      break;
+    }
+    if (!authenticated) break;
   }
-  std::vector<HttpDownloader::Header> headers = dlAuth.headers;
-  if (!dlAuth.bearer.empty()) headers.push_back({"Authorization", "Bearer " + dlAuth.bearer});
-  // downloadFile() (CatalogActivity) releases font caches, checks the TLS heap
-  // floor, and pumps cancel input during the transfer.
-  const auto result = downloadFile(downloadUrl, filename, dlUser, dlPass, headers);
 
 #if defined(ESP32) && defined(BOARD_HAS_PSRAM) && __has_include(<esp_heap_caps.h>)
   if (hasPsram) {
@@ -1024,7 +1050,10 @@ const char* OpdsBookBrowserActivity::acquireLabel(const OpdsAvailability& av) co
 // frozen on the previous message.
 void OpdsBookBrowserActivity::onClientStatus(void* ctx, const freeink::opds::ClientPhase phase) {
   auto* self = static_cast<OpdsBookBrowserActivity*>(ctx);
-  self->statusMessage = phase == freeink::opds::ClientPhase::SigningIn ? tr(STR_OPDS_SIGNING_IN) : tr(STR_LOADING);
+  {
+    RenderLock lock;
+    self->statusMessage = phase == freeink::opds::ClientPhase::SigningIn ? tr(STR_OPDS_SIGNING_IN) : tr(STR_LOADING);
+  }
   self->requestUpdate(true);
 }
 

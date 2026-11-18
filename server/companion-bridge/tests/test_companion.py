@@ -265,6 +265,11 @@ class CompanionSpoilerAndAlignmentTest(unittest.TestCase):
         resolver = BookResolver()
         resolver.register_book(self.book)
 
+        # Case A0: Exact Audiobookshelf item ID match (even without other metadata)
+        matched_abs, method_abs = resolver.resolve(BookQueryIdentity(abs_item_id=self.book.canonical_book_id))
+        self.assertIsNotNone(matched_abs)
+        self.assertEqual(method_abs, "exact_id")
+
         # Case A: Exact UUID or ISBN match
         matched, method = resolver.resolve(BookQueryIdentity(book_uuid="99887766-5544-3322-1100-aabbccddeeff"))
         self.assertIsNotNone(matched)

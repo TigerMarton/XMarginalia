@@ -12,6 +12,7 @@
 #include "apps_local/companion/CompanionClient.h"
 #include "components/UITheme.h"
 #include "util/PluginEvents.h"
+#include "util/PluginSync.h"
 #include "util/SlideSwitch.h"
 
 namespace fui = freeink::ui;
@@ -101,7 +102,7 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, const 
   items.push_back({MenuAction::SCREENSHOT, StrId::STR_SCREENSHOT_BUTTON});
   items.push_back({MenuAction::DISPLAY_QR, StrId::STR_DISPLAY_QR});
   items.push_back({MenuAction::GO_HOME, StrId::STR_GO_HOME_BUTTON});
-  bool canSync = KOREADER_STORE.hasCredentials();
+  bool canSync = KOREADER_STORE.hasCredentials() || pluginsync::anySyncPlugin();
   for (size_t event = 0; !canSync && event < static_cast<size_t>(pluginevents::Event::COUNT); ++event) {
     canSync = pluginevents::anySubscriber(static_cast<pluginevents::Event>(event));
   }

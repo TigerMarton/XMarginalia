@@ -218,6 +218,18 @@ enum class BootResume : uint8_t {
 // device back up against the user's sleep gesture. Never cleared:
 // startDeepSleep() does not return, so a set latch only ends at the wakeup reset.
 static bool deepSleepInProgress = false;
+static unsigned long lastInputTime = 0;
+
+// Screens that block auto-sleep can hold one static image for as long as they
+// run. Once input stops, power the panel down as sleep does; the next paint wakes it.
+// The EEGO A4 does this on every screen, as its stock firmware does: its panel
+// fuzzes and shows earlier screens when left powered. Its driver times the
+// power-off itself, 500 ms after the last refresh, whatever the input does.
+static void idleDisplayWhileAwake() {
+  if (!BoardConfig::isEegoA4() && (!activityManager.preventAutoSleep() || millis() - lastInputTime < 30000)) return;
+  RenderLock lock(RenderLock::Mode::Try);
+  if (lock.ownsLock()) display.controllerIdle();
+}
 
 #if FREEINK_CAP_TOUCH
 static bool finishWifiSessionWithoutRestart() {
@@ -570,7 +582,9 @@ static void drawSleepChargeStrip(const bool charging, const uint16_t percent) {
   char text[48];
   snprintf(text, sizeof(text), "%s  %u%%", charging ? tr(STR_CHARGING) : tr(STR_CHARGED), percent);
   renderer.drawCenteredText(SMALL_FONT_ID, y + 6, text);
-  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+  if (!renderer.displayRetainedGrayscaleOverlay(0, y, renderer.getScreenWidth(), h)) {
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+  }
 }
 
 // Shows the charge strip while the power HAL holds sleep on USB power, and
@@ -584,14 +598,16 @@ static bool holdSleepWhileUsbPowered() {
   auto* const sleepFrame = static_cast<uint8_t*>(heap_caps_malloc(frameSize, MALLOC_CAP_SPIRAM));
   if (sleepFrame) memcpy(sleepFrame, renderer.getFrameBuffer(), frameSize);
   const bool buttonPressed = powerManager.holdWhileUsbPowered(gpio, drawSleepChargeStrip);
-  if (sleepFrame) {
-    if (!buttonPressed) {
-      RenderLock lock;
-      memcpy(renderer.getFrameBuffer(), sleepFrame, frameSize);
+  if (!buttonPressed) {
+    RenderLock lock;
+    if (sleepFrame) memcpy(renderer.getFrameBuffer(), sleepFrame, frameSize);
+    const int h = renderer.getLineHeight(SMALL_FONT_ID) + 12;
+    const int y = renderer.getScreenHeight() - h;
+    if (!renderer.displayRetainedGrayscaleOverlay(0, y, renderer.getScreenWidth(), h, true) && sleepFrame) {
       renderer.displayBuffer(HalDisplay::FAST_REFRESH);
     }
-    heap_caps_free(sleepFrame);
   }
+  heap_caps_free(sleepFrame);
   return buttonPressed;
 }
 #endif
@@ -830,6 +846,15 @@ void setup() {
   // The Metalio boots after the button is released, so it skips the check.
   const bool wakeHoldVerified = wakeupReason != HalGPIO::WakeupReason::PowerButton || BoardConfig::isMetalioEInk4() ||
                                 gpio.verifyPowerButtonWakeup();
+  // EEGO A4: a power-button wake needs the button held until 400 ms after boot
+  // unless a click is set to wake. Sampled here, at the deadline; the decision
+  // waits for SETTINGS like the one above. A released button ends the wait.
+  constexpr unsigned long EEGO_WAKE_HOLD_MS = 400;
+  bool eegoWakeHeld = true;
+  if (BoardConfig::isEegoA4() && wakeupReason == HalGPIO::WakeupReason::PowerButton) {
+    while (millis() < EEGO_WAKE_HOLD_MS && gpio.isPowerButtonPhysicallyPressed()) delay(5);
+    eegoWakeHeld = gpio.isPowerButtonPhysicallyPressed();
+  }
 
   // X4 Pro and X4 Classic both map BTN_UP to GPIO0 — an ESP32-S3 boot strap — so
   // gate recovery on the non-strap Down key (GPIO7) to avoid a stuck-in-recovery loop.
@@ -852,9 +877,18 @@ void setup() {
   // We need 6 open files concurrently when parsing a new chapter
   if (!Storage.begin()) {
     LOG_ERR("MAIN", "SD card initialization failed");
+#if CROSSPOINT_DEV_SERIAL_BRIDGE
+    // fork-local seam: a dev build keeps booting without a card, so a unit on
+    // the desk that has none (a hardware sample) can still be driven over the
+    // cable and its panel exercised. Every file call fails closed on an
+    // unmounted card (SDCardManager checks `initialized`), so nothing is read
+    // or saved. Release builds keep upstream's stop.
+    LOG_ERR("MAIN", "dev build: continuing without an SD card; nothing will be read or saved");
+#else
     setupDisplayAndFonts(isSilentReboot);
     activityManager.goToFullScreenMessage("SD card error", EpdFontFamily::BOLD);
     return;
+#endif
   }
   // A virgin card has no /.crosspoint until the first PersistableStore save
   // happens to run (that path mkdirs for itself), and every plain HalFile
@@ -962,10 +996,15 @@ void setup() {
   (void)startedUnattended;
 #endif
   Frontlight.begin(SETTINGS.frontlightBrightness, SETTINGS.frontlightWarmth, /*on=*/false);
+  // No light to toggle: drop the action so single clicks do not wait for a double click.
+  if (!Frontlight.present()) {
+    SETTINGS.doubleClickPwrLight = 0;
+  }
 
   switch (wakeupReason) {
     case HalGPIO::WakeupReason::PowerButton:
 #if CROSSPOINT_DEV_SERIAL_BRIDGE
+      (void)eegoWakeHeld;
       // A bridge-driven desk device has no finger to hold the button through
       // the wake check, and boards without USB detect (Sticky) classify every
       // cold boot as PowerButton -- so a dev build would deep-sleep on every
@@ -980,6 +1019,12 @@ void setup() {
       if (!wakeHoldVerified && SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::SLEEP &&
           !(FREEINK_DEVICE_PICCO && gpio.isUsbConnected())) {
         LOG_DBG("MAIN", "Power-button wake not held through verification, sleeping");
+        powerprobe::beforeSleep();
+        Storage.prepareForDeepSleep();
+        startDeepSleepArmed(resleepTimerMicros());
+      }
+      if (!eegoWakeHeld && SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::SLEEP) {
+        LOG_DBG("MAIN", "Power-button wake released before %lu ms, sleeping", EEGO_WAKE_HOLD_MS);
         powerprobe::beforeSleep();
         Storage.prepareForDeepSleep();
         startDeepSleepArmed(resleepTimerMicros());
@@ -1022,7 +1067,14 @@ void setup() {
     case HalGPIO::WakeupReason::AfterUSBPower:
       // Most devices return to sleep after a USB-powered cold boot.
       LOG_DBG("MAIN", "Wakeup reason: After USB Power");
-#if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_EEGO_A4 || \
+#if CROSSPOINT_DEV_SERIAL_BRIDGE
+      // fork-local seam, the twin of the PowerButton one above: a Sticky that
+      // reads as charging takes THIS branch on every reset, and opening the
+      // bridge's port resets it, so a dev build would deep-sleep before the
+      // bridge could speak. Dev builds stay up; release builds keep the rule.
+      LOG_DBG("MAIN", "Dev bridge build: staying up after a USB-powered boot");
+      break;
+#elif FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_EEGO_A4 || \
     FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_PICCO
       // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
       // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
@@ -1127,7 +1179,8 @@ void setup() {
           allowFastInitialReaderRefresh = true;
         }
       } else {
-        // Clean the retained sleep image as part of the first Home paint.
+        // With the fading fix the X3 wake refresh is not promoted to HALF, and
+        // controller RAM is white; clean the retained sleep image on the first Home paint.
         needsWakeRefresh = true;
       }
       break;
@@ -1279,6 +1332,10 @@ void loop() {
     // USB Drive handed the raw SD card to the host. Do not run screenshots,
     // sleep, shortcuts, or normal navigation while its filesystem is detached.
     activityManager.loop();
+    if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() || remoteActed) {
+      lastInputTime = millis();
+    }
+    idleDisplayWhileAwake();
     if (activityManager.preventAutoSleep()) {
       powerManager.setPowerSaving(false);
       delay(10);
@@ -1321,7 +1378,7 @@ void loop() {
     if (lock.ownsLock()) gaugeCapacityPending = BatteryMonitor::loadDesignCapacity();
   }
 
-  renderer.setFadingFix(SETTINGS.fadingFix);
+  renderer.setFadingFix(SETTINGS.fadingFix && CrossPointSettings::fadingFixSupported());
 
   // Every 60s, not 10, and at DBG. The RTC log ring is SIXTEEN lines, so a
   // ten-second heartbeat flushed the whole thing every 160 seconds -- which is
@@ -1394,8 +1451,11 @@ void loop() {
   // and cannot be woken from it. A development device that disappears after the
   // sleep timeout is not one, and the cost is confined to devices whose owner
   // deliberately switched Developer Mode on.
-  if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() || halTiltSensor.hadActivity() ||
-      remoteActed || activityManager.preventAutoSleep()) {
+  const bool userInput = gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() ||
+                         halTiltSensor.hadActivity() || remoteActed;
+  if (userInput) lastInputTime = millis();
+  idleDisplayWhileAwake();
+  if (userInput || activityManager.preventAutoSleep()) {
     lastActivityTime = millis();         // Reset inactivity timer
     powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
   }

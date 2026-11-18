@@ -52,6 +52,7 @@ class UITheme {
   static int getBottomStatusBarHeight();
   static int getStatusBarHeight();
   static int getProgressBarHeight();
+  static int getReaderStatusBarHeight();
 
  private:
   BaseTheme fallbackTheme;

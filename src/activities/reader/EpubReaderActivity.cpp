@@ -64,6 +64,7 @@
 #include "fontIds.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
+#include "util/PluginSync.h"
 #include "util/ScreenshotUtil.h"
 
 namespace {
@@ -1494,7 +1495,7 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
     case CrossPointSettings::LP_MENU_FOOTNOTES:
       return ReaderUtils::BOOKMARK_HOLD_MS;
     case CrossPointSettings::LP_MENU_KOSYNC:
-      return KOREADER_STORE.hasCredentials() ? ReaderUtils::GO_HOME_MS : 0;
+      return (KOREADER_STORE.hasCredentials() || pluginsync::anySyncPlugin()) ? ReaderUtils::GO_HOME_MS : 0;
     case CrossPointSettings::LP_MENU_READER_MENU:
     case CrossPointSettings::LP_MENU_DISABLED:
     default:
@@ -1505,15 +1506,21 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
 bool EpubReaderActivity::launchKOReaderSync() {
   flushReaderSession();
 
-  // Without a KOReader server the sync activity only brings the device online
-  // and drains that outbox; a failed join exits back to the reader with the
-  // events still queued.
-  if (!KOREADER_STORE.hasCredentials()) {
+  const bool hasPluginSync = pluginsync::hasSyncForBook(epub->getPath());
+  // Without a KOReader server or a two-way sync plugin matching this book,
+  // the sync activity only brings the device online and drains that outbox;
+  // a failed join exits back to the reader with the events still queued.
+  if (!KOREADER_STORE.hasCredentials() && !hasPluginSync) {
     activityManager.replaceActivity(std::make_unique<KOReaderSyncActivity>(
         renderer, mappedInput, epub->getPath(), getCurrentPosition(), SavedProgressPosition{}, "",
         /*pluginEventsOnly=*/true));
     return true;
   }
+  // Books with a matching sync plugin sidecar (e.g. Audiobookshelf abs_item_id):
+  // if KOReader credentials are also configured, KOReaderSyncActivity prompts
+  // the user to pick between them before connecting Wi-Fi.
+  const bool usePluginSync = hasPluginSync;
+  const std::string pluginSyncTitle = hasPluginSync ? pluginsync::syncTitleForBook(epub->getPath()) : std::string{};
 
   RenderLock renderLock;
 
@@ -1557,7 +1564,8 @@ bool EpubReaderActivity::launchKOReaderSync() {
   LOG_DBG("KOSync", "Epub released (heap after: %u)", (unsigned)ESP.getFreeHeap());
 
   activityManager.replaceActivity(std::make_unique<KOReaderSyncActivity>(
-      renderer, mappedInput, savedEpubPath, localPos, std::move(localKoPos), std::move(localChapterName)));
+      renderer, mappedInput, savedEpubPath, localPos, std::move(localKoPos), std::move(localChapterName),
+      /*pluginEventsOnly=*/false, usePluginSync, std::move(pluginSyncTitle)));
   return true;
 }
 
@@ -1809,6 +1817,10 @@ void EpubReaderActivity::renderBook() {
   // exit from the overlay while its deferred chrome refresh is still pending.
   settleOverlayRefresh();
 
+  // The old page snapshot must not compete with chapter builds for heap.
+  // An open overlay gets a fresh snapshot after the new page is rendered.
+  discardOverlayPage();
+
   const auto showPendingSyncSaveError = [this]() {
     if (!pendingSyncSaveError) return;
     pendingSyncSaveError = false;
@@ -1835,7 +1847,7 @@ void EpubReaderActivity::renderBook() {
                                    &orientedMarginLeft);
   const uint8_t effectiveMargin = bookSettings.effectiveScreenMargin();
   const uint8_t topBarHeight = static_cast<uint8_t>(UITheme::getInstance().getTopStatusBarHeight());
-  const uint8_t bottomBarHeight = static_cast<uint8_t>(UITheme::getInstance().getBottomStatusBarHeight());
+  const uint8_t bottomBarHeight = static_cast<uint8_t>(UITheme::getReaderStatusBarHeight());
 
   orientedMarginTop += (topBarHeight > 0 ? (topBarHeight + effectiveMargin) : effectiveMargin);
   orientedMarginLeft += effectiveMargin;
@@ -1844,10 +1856,13 @@ void EpubReaderActivity::renderBook() {
   if (automaticPageTurnActive &&
       (bottomBarHeight == 0 || bottomBarHeight == UITheme::getInstance().getProgressBarHeight())) {
     orientedMarginBottom +=
-        std::max(effectiveMargin,
-                 static_cast<uint8_t>(bottomBarHeight + UITheme::getInstance().getMetrics().statusBarVerticalMargin));
+        effectiveMargin + bottomBarHeight + UITheme::getInstance().getMetrics().statusBarVerticalMargin;
   } else {
-    orientedMarginBottom += std::max(effectiveMargin, bottomBarHeight);
+    // statusBarOffsetY lowers the status line toward the edge; the text follows it down.
+    const int statusLane = SETTINGS.statusBarSpec().hasBottomTextLane()
+                               ? std::max(0, static_cast<int>(bottomBarHeight) - BoardConfig::ACTIVE.statusBarOffsetY)
+                               : bottomBarHeight;
+    orientedMarginBottom += effectiveMargin + statusLane;
   }
 
   const uint16_t viewportWidth = renderer.getScreenWidth() - orientedMarginLeft - orientedMarginRight;
@@ -2119,11 +2134,6 @@ void EpubReaderActivity::renderBook() {
     currentPageLinkMarginLeft = orientedMarginLeft;
     currentPageLinkMarginTop = orientedMarginTop;
 
-    // The overlay and non-tiled grayscale renderer share the renderer's single
-    // stored-BW slot. Release the old page snapshot before renderContents()
-    // needs that slot, then snapshot the newly rendered page below.
-    discardOverlayPage();
-
     const auto start = millis();
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
@@ -2270,6 +2280,7 @@ void EpubReaderActivity::rememberCurrentContentOffset() {
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                         const int orientedMarginRight, const int orientedMarginBottom,
                                         const int orientedMarginLeft) {
+  const ReaderUtils::ReaderRefreshScope readerRefresh;
   const auto t0 = millis();
   const int fontId = bookSettings.enabled ? SETTINGS.getReaderFontIdFor(bookSettings.effectiveSdFontFamilyName(),
                                                                         bookSettings.effectiveFontPointSize())
@@ -2306,9 +2317,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool cleanImageBasePending = manualRefreshPending || pagesUntilFullRefresh <= 1;
   const bool needsTextGrayscale = SETTINGS.textAntiAliasing;
   const bool needsAnyGrayscale = needsTextGrayscale || (pageHasImages && !BoardConfig::isEegoA4());
-  const bool absoluteImageGrayscale = pageHasImages && !gpio.deviceIsX3() &&
-                                      display.getController() == HalDisplay::Controller::UC8279 &&
-                                      renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported();
+  const bool absoluteImageGrayscale =
+      pageHasImages && !gpio.deviceIsX3() &&
+      (display.getController() == HalDisplay::Controller::UC8279 || BoardConfig::isPicco()) &&
+      renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported();
   const auto grayscale = renderer.grayscaleCapabilities(absoluteImageGrayscale ? HalDisplay::GrayscaleMode::Absolute
                                                                                : HalDisplay::GrayscaleMode::Overlay);
   const bool tiledGrayscale = needsAnyGrayscale && grayscale.stripUploads;
@@ -2361,7 +2373,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
       return;
     }
-    LOG_DBG("ERS", "UC8279 image page: absolute quality waveform");
+    LOG_DBG("ERS", "Image page: absolute grayscale waveform");
     pagesUntilFullRefresh = 1;
   } else if (pageHasImages) {
     // Image pages use one base refresh before the grayscale pass. FAST leaves
@@ -2402,7 +2414,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       for (int y = 0; y < gh; y += STRIP_ROWS) {
         const int rows = (gh - y < STRIP_ROWS) ? (gh - y) : STRIP_ROWS;
         renderer.beginStripTarget(buf + static_cast<size_t>(y) * gwBytes, y, rows);
-        renderer.clearScreen(0x00);
+        renderer.clearScreen(absoluteImageGrayscale ? 0xFF : 0x00);
         renderGrayscalePass();
         renderer.endStripTarget();
       }
@@ -2434,8 +2446,8 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       }
       const auto tGrayWrite = millis();
 
-      renderer.setRenderMode(GfxRenderer::BW);
       renderer.displayGrayBuffer();
+      renderer.setRenderMode(GfxRenderer::BW);
       const auto tGrayDisplay = millis();
 
       renderer.cleanupGrayscaleWithFrameBuffer();
@@ -2460,12 +2472,17 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
           // page reaches the panel even without its grays.
           renderer.cleanupGrayscaleWithFrameBuffer();
         }
+        if (absoluteImageGrayscale) {
+          // The absolute base may not have shown the page; cancel it and show B/W.
+          renderer.setRenderMode(GfxRenderer::BW);
+          ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
+        }
       } else {
         renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
         for (int y = 0; y < gh; y += STRIP_ROWS) {
           const int rows = (gh - y < STRIP_ROWS) ? (gh - y) : STRIP_ROWS;
           renderer.beginStripTarget(scratch.get(), y, rows);
-          renderer.clearScreen(0x00);
+          renderer.clearScreen(absoluteImageGrayscale ? 0xFF : 0x00);
           renderGrayscalePass();
           renderer.endStripTarget();
           renderer.writeGrayscalePlaneStrip(true, scratch.get(), y, rows);
@@ -2476,15 +2493,15 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         for (int y = 0; y < gh; y += STRIP_ROWS) {
           const int rows = (gh - y < STRIP_ROWS) ? (gh - y) : STRIP_ROWS;
           renderer.beginStripTarget(scratch.get(), y, rows);
-          renderer.clearScreen(0x00);
+          renderer.clearScreen(absoluteImageGrayscale ? 0xFF : 0x00);
           renderGrayscalePass();
           renderer.endStripTarget();
           renderer.writeGrayscalePlaneStrip(false, scratch.get(), y, rows);
         }
         const auto tGrayMsb = millis();
 
-        renderer.setRenderMode(GfxRenderer::BW);
         renderer.displayGrayBuffer();
+        renderer.setRenderMode(GfxRenderer::BW);
         const auto tGrayDisplay = millis();
 
         renderer.cleanupGrayscaleWithFrameBuffer();
@@ -2502,7 +2519,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     if (needsAnyGrayscale) {
       if (!renderer.storeBwBuffer()) {
         LOG_ERR("ERS", "Failed to store BW buffer for grayscale render; skipping grayscale this page");
-        if (absoluteImageGrayscale) renderer.setRenderMode(GfxRenderer::BW);
+        if (absoluteImageGrayscale) {
+          renderer.setRenderMode(GfxRenderer::BW);
+          ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
+        }
         return;
       }
       const auto tBwStore = millis();
@@ -3918,6 +3938,12 @@ void EpubReaderActivity::runPendingCompanionQuery() {
   }
 
   companion::CompanionQuery req;
+  {
+    std::string sidecarJson;
+    if (Storage.readFileToString("COMP", epub->getPath() + ".meta.json", 2 * 1024, sidecarJson)) {
+      req.absItemId = companion::extractAbsItemId(sidecarJson);
+    }
+  }
   req.bookUuid = companionSyncMeta.packageId;
   req.isbn = companionSyncMeta.isbn;
   req.asin = companionSyncMeta.asin;

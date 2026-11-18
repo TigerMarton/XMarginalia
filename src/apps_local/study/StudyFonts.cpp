@@ -26,9 +26,10 @@ constexpr const char* kLegacyFontRoot = "/study/fonts";
 // SdCardFontRegistry. The registry only scans /.fonts and /fonts, and putting
 // these there would list them as reading fonts -- see the header for why that
 // is a trap. SdCardFontFamilyInfo is a plain struct, so this costs nothing.
-// The file is <root>/<family>/<family>_<size>.cpfont, the canonical name, so
-// the entry carries no filename and filePath() rebuilds it from root and name.
-// `root` points at StudyFonts::root_ or a literal, both outliving the load.
+//
+// The file is <root>/<family>/<family>_<size>.cpfont, the canonical name, so the
+// entry carries no filename and filePath() rebuilds it from root and name.
+// `root` is StudyFonts::root_ or a literal, both of which outlive the load.
 SdCardFontFamilyInfo describe(const char* root, const char* family, const uint8_t pointSize) {
   SdCardFontFamilyInfo info;
   info.name = family;

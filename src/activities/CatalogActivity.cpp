@@ -81,14 +81,17 @@ void CatalogActivity::launchSearch() {
     fail(StrId::STR_MEMORY_ERROR);
     return;
   }
+  const State prevState = state;
   state = State::SEARCH_INPUT;
   requestUpdate();
-  startActivityForResult(std::move(keyboard), [this](const ActivityResult& result) {
-    state = State::BROWSING;
-    if (!result.isCancelled)
+  startActivityForResult(std::move(keyboard), [this, prevState](const ActivityResult& result) {
+    if (!result.isCancelled) {
+      state = State::BROWSING;
       performSearch(std::get<KeyboardResult>(result.data).text);
-    else
+    } else {
+      state = prevState;
       requestUpdate();
+    }
   });
 }
 

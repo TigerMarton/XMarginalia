@@ -10,7 +10,11 @@ class AboutActivity final : public UiListActivity {
  public:
   explicit AboutActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
+#if FREEINK_DEVICE_EEGO_A4
+  static constexpr int ITEM_COUNT = 12;
+#else
   static constexpr int ITEM_COUNT = 11;
+#endif
 
   void onEnter() override;
 

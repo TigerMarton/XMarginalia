@@ -18,14 +18,14 @@ XMarginalia includes an optional, spoiler-free **AI Companion** inside the EPUB 
 
 ### Device Flow & Memory Discipline
 
-1. When you trigger an AI action, the reader captures your book identifiers (`book_uuid`, `isbn`, `asin`, `ko_md5`, `title`, `author`, `filename`), your exact reading position (`spine_index`, `chapter_title`, `visible_offset`, `chapter_progress`, `book_progress`), and a short `anchor_text` snippet from the visible page.
-2. Before waking Wi-Fi or starting TLS, `EpubReaderActivity::runPendingCompanionQuery()` stops the BLE page turner and releases rebuildable reader state (`section`, `epub`, `CLIPPINGS`, overlay page, image render cache, and SD font caches) to maximize contiguous internal SRAM.
+1. When you trigger an AI action, the reader captures your book identifiers (`abs_item_id` from `<book>.meta.json` when downloaded via the Audiobookshelf plugin, plus `book_uuid`, `isbn`, `asin`, `ko_md5`, `title`, `author`, `filename`), your exact reading position (`spine_index`, `chapter_title`, `visible_offset`, `chapter_progress`, `book_progress`), and a short `anchor_text` snippet from the visible page.
+2. Config is loaded from `/.crosspoint/companion.json` (or optionally `companion_url` / `companion_api_key` in the Audiobookshelf plugin's `config.json` when `companion.json` is absent). Before waking Wi-Fi or starting TLS, `EpubReaderActivity::runPendingCompanionQuery()` stops the BLE page turner and releases rebuildable reader state (`section`, `epub`, `CLIPPINGS`, overlay page, image render cache, and SD font caches) to maximize contiguous internal SRAM.
 3. `CompanionClient::query()` connects to your saved Wi-Fi network, sends `POST /api/ereader/v1/query` over HTTPS (or LAN HTTP if configured) with `X-API-Key`, and tears down the Wi-Fi radio when finished.
 4. `EpubReaderActivity` reloads the EPUB from its SD cache and displays the response in `DictionaryDefinitionActivity`, paginated and formatted with your current reader font (`SETTINGS.getReaderFontId()`) and line spacing (`SETTINGS.getReaderLineCompression()`).
 
 ### Server Pipeline (`companion-bridge`)
 
-1. **Multi-Tier Book Resolution (`BookResolver`)**: Matches the e-reader's request against your library using `<dc:identifier>` UUID, ISBN, ASIN, or `ko_md5`, falling back to fuzzy normalized `title + author` / filename matching (`>= 82%` via RapidFuzz), and finally full-corpus `anchor_text` matching.
+1. **Multi-Tier Book Resolution (`BookResolver`)**: Matches the e-reader's request against your library using `abs_item_id`, `<dc:identifier>` UUID, ISBN, ASIN, or `ko_md5`, falling back to fuzzy normalized `title + author` / filename matching (`>= 82%` via RapidFuzz), and finally full-corpus `anchor_text` matching.
 2. **Lazy Indexing & Low-RAM Caching**: On startup and `/api/ereader/v1/sync`, the server scans EPUBs into lightweight metadata stubs (without keeping every book's full text in RAM). Full EPUB chunks are parsed on demand and held in a small LRU cache (`COMPANION_BOOK_CACHE`, default `3`).
 3. **Strict Intra-Chapter Spoiler Gate (`CutoffResolver`)**:
    * **Tier 1 (`anchor_exact`)**: Finds `anchor_text` in the indexed chunks and truncates any straddling chunk immediately after that passage.

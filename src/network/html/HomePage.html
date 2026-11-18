@@ -21,6 +21,10 @@
     <div class="card">
       <h2>Device Status</h2>
       <div class="info-row">
+        <span class="label">Device</span>
+        <span class="value" id="device-name"></span>
+      </div>
+      <div class="info-row">
         <span class="label">Serial #</span>
         <span class="value" id="serial"></span>
       </div>
@@ -30,7 +34,7 @@
       </div>
       <div class="info-row">
         <span class="label">WiFi Status</span>
-        <span class="status">Connected</span>
+        <span class="status" id="wifi-status">Connected</span>
       </div>
       <div class="info-row">
         <span class="label">IP Address</span>
@@ -39,6 +43,10 @@
       <div class="info-row">
         <span class="label">Free Memory</span>
         <span class="value" id="free-heap"></span>
+      </div>
+      <div class="info-row" id="psram-row" hidden>
+        <span class="label">PSRAM</span>
+        <span class="value" id="free-psram"></span>
       </div>
     </div>
 
@@ -52,12 +60,21 @@
           throw new Error('Failed to fetch status: ' + response.status + ' ' + response.statusText);
         }
         const data = await response.json();
+        document.getElementById('device-name').textContent = data.device || 'Unknown';
         document.getElementById('version').textContent = data.version || 'N/A';
-        document.getElementById('serial').textContent = data.serial;
+        document.getElementById('serial').textContent = data.serial || 'N/A';
+        document.getElementById('wifi-status').textContent = data.mode === 'AP'
+          ? 'Hotspot'
+          : (Number.isFinite(data.rssi) && data.rssi !== 0 ? 'Connected (' + data.rssi + ' dBm)' : 'Connected');
         document.getElementById('ip-address').textContent = data.ip || 'N/A';
         document.getElementById('free-heap').textContent = Number.isFinite(data.freeHeap)
           ? data.freeHeap.toLocaleString() + ' bytes'
           : 'N/A';
+        if (Number.isFinite(data.totalPsram) && data.totalPsram > 0 && Number.isFinite(data.freePsram)) {
+          document.getElementById('free-psram').textContent =
+            data.freePsram.toLocaleString() + ' / ' + data.totalPsram.toLocaleString() + ' bytes';
+          document.getElementById('psram-row').hidden = false;
+        }
       } catch (error) {
         console.error('Error fetching status:', error);
       }

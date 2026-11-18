@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Files - XMarginalia</title>
-  <script src="/js/jszip.min.js"></script>
   <style>
     .page-header {
       display: flex;
@@ -1313,14 +1312,6 @@
   }
 
   async function hydrate() {
-    // Fetch CrossPoint version
-    fetchVersion();
-
-    // Load any SD-hosted plugins that mount on the File Manager page.
-    // File Manager plugins may use the page's JSZip (docs/sd-plugins.md).
-    // The host is a separate request; if it failed, the file list still loads.
-    if (typeof loadPlugins === 'function') loadPlugins('files', ensureJszip);
-
     // Keep upload cleanup rules when a dialog is cancelled or its backdrop is clicked.
     const closeModal = {
       uploadModal: closeUploadModal,
@@ -1383,95 +1374,104 @@
     }
 
     let files = [];
+    let filesLoaded = false;
     try {
       const response = await fetch('/api/files?path=' + encodeURIComponent(currentPath) + '&_=' + Date.now());
       if (!response.ok) {
         throw new Error('Failed to load files: ' + response.status + ' ' + response.statusText);
       }
       files = await response.json();
+      filesLoaded = true;
     } catch (e) {
       console.error(e);
       fileTable.innerHTML = '<div class="empty-state">An error occurred while loading the files</div>';
-      return;
     }
 
-    let folderCount = 0;
-    let totalSize = 0;
-    files.forEach(file => {
-      if (file.isDirectory) folderCount++;
-      totalSize += file.size;
-    });
-
-    const fileCount = files.length - folderCount;
-    const folderLabel = folderCount === 1 ? 'folder' : 'folders';
-    const fileLabel = fileCount === 1 ? 'file' : 'files';
-    const summary = [];
-    if (folderCount) summary.push(`${folderCount} ${folderLabel}`);
-    if (fileCount) summary.push(`${fileCount} ${fileLabel}`, formatFileSize(totalSize));
-    document.getElementById('folder-summary').textContent = summary.join(', ');
-
-    if (files.length === 0) {
-      fileTable.innerHTML = '<div class="empty-state">This folder is empty</div>';
-    } else {
-      let fileTableContent = '<table class="file-table"><thead>';
-
-				// Add select-all checkbox column
-      fileTableContent += '<tr><th style="width:40px"><label><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)"><span class="select-all-label"> Select all</span></label></th><th>Name</th><th>Type</th><th>Size</th><th class="actions-col">Actions</th></tr></thead><tbody>';
-
-
-      const sortedFiles = files.sort((a, b) => {
-        // Directories first, then epub files, then other files, alphabetically within each group
-        if (a.isDirectory && !b.isDirectory) return -1;
-        if (!a.isDirectory && b.isDirectory) return 1;
-        if (a.isEpub && !b.isEpub) return -1;
-        if (!a.isEpub && b.isEpub) return 1;
-        return a.name.localeCompare(b.name);
+    if (filesLoaded) {
+      let folderCount = 0;
+      let totalSize = 0;
+      files.forEach(file => {
+        if (file.isDirectory) folderCount++;
+        totalSize += file.size;
       });
 
-      sortedFiles.forEach(file => {
-        if (file.isDirectory) {
-          let folderPath = currentPath;
-          if (!folderPath.endsWith("/")) folderPath += "/";
-          folderPath += file.name;
+      const fileCount = files.length - folderCount;
+      const folderLabel = folderCount === 1 ? 'folder' : 'folders';
+      const fileLabel = fileCount === 1 ? 'file' : 'files';
+      const summary = [];
+      if (folderCount) summary.push(`${folderCount} ${folderLabel}`);
+      if (fileCount) summary.push(`${fileCount} ${fileLabel}`, formatFileSize(totalSize));
+      document.getElementById('folder-summary').textContent = summary.join(', ');
 
-         // Checkbox cell + folder row
-          fileTableContent += `<tr class="folder-row">`;
-          fileTableContent += `<td><input type="checkbox" class="select-item" data-path="${encodeURIComponent(folderPath)}" data-name="${escapeHtml(file.name)}" data-type="folder"></td>`;
-          fileTableContent += `<td><span class="file-icon"><svg class="icon"><use href="/assets/icons.svg#folder"></use></svg></span><a href="/files?path=${encodeURIComponent(folderPath)}" class="folder-link">${escapeHtml(file.name)}</a></td>`;
-          fileTableContent += '<td>FOLDER</td>';
-          fileTableContent += '<td>-</td>';
-          fileTableContent += `<td class="actions-col"><div class="action-icon-group"><button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(folderPath)}" data-folder="true" title="Delete folder" aria-label="Delete folder"><svg class="icon"><use href="/assets/icons.svg#trash"></use></svg></button></div></td>`;
-          fileTableContent += '</tr>';
-        } else {
-          let filePath = currentPath;
-          if (!filePath.endsWith("/")) filePath += "/";
-          filePath += file.name;
+      if (files.length === 0) {
+        fileTable.innerHTML = '<div class="empty-state">This folder is empty</div>';
+      } else {
+        let fileTableContent = '<table class="file-table"><thead>';
 
-          // Checkbox cell + file row
-          fileTableContent += `<tr class="${file.isEpub ? 'epub-file' : ''}">`;
-          fileTableContent += `<td><input type="checkbox" class="select-item" data-path="${encodeURIComponent(filePath)}" data-name="${escapeHtml(file.name)}" data-type="file"></td>`;
-          const fileIsImage = isImageFile(file.name);
-          fileTableContent += `<td><span class="file-icon">${fileIcon(file.isEpub ? 'book' : (fileIsImage ? 'image' : 'file'))}</span>`;
-          if (fileIsImage) {
-            fileTableContent += `<a href="${downloadUrl(filePath)}" class="file-link image-preview-link">${escapeHtml(file.name)}</a>`;
+        // Add select-all checkbox column
+        fileTableContent += '<tr><th style="width:40px"><label><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)"><span class="select-all-label"> Select all</span></label></th><th>Name</th><th>Type</th><th>Size</th><th class="actions-col">Actions</th></tr></thead><tbody>';
+
+
+        const sortedFiles = files.sort((a, b) => {
+          // Directories first, then epub files, then other files, alphabetically within each group
+          if (a.isDirectory && !b.isDirectory) return -1;
+          if (!a.isDirectory && b.isDirectory) return 1;
+          if (a.isEpub && !b.isEpub) return -1;
+          if (!a.isEpub && b.isEpub) return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+        sortedFiles.forEach(file => {
+          if (file.isDirectory) {
+            let folderPath = currentPath;
+            if (!folderPath.endsWith("/")) folderPath += "/";
+            folderPath += file.name;
+
+            // Checkbox cell + folder row
+            fileTableContent += `<tr class="folder-row">`;
+            fileTableContent += `<td><input type="checkbox" class="select-item" data-path="${encodeURIComponent(folderPath)}" data-name="${escapeHtml(file.name)}" data-type="folder"></td>`;
+            fileTableContent += `<td><span class="file-icon"><svg class="icon"><use href="/assets/icons.svg#folder"></use></svg></span><a href="/files?path=${encodeURIComponent(folderPath)}" class="folder-link">${escapeHtml(file.name)}</a></td>`;
+            fileTableContent += '<td>FOLDER</td>';
+            fileTableContent += '<td>-</td>';
+            fileTableContent += `<td class="actions-col"><div class="action-icon-group"><button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(folderPath)}" data-folder="true" title="Delete folder" aria-label="Delete folder"><svg class="icon"><use href="/assets/icons.svg#trash"></use></svg></button></div></td>`;
+            fileTableContent += '</tr>';
           } else {
-            fileTableContent += `<a rel="noopener noreferrer" target="_blank" href="${downloadUrl(filePath)}" class="file-link">${escapeHtml(file.name)}</a>`;
-          }
-          fileTableContent += '</td>';
-          fileTableContent += file.isEpub ? '<td>EPUB</td>' : `<td>${escapeHtml(file.name.split('.').pop().toUpperCase())}</td>`;
-          fileTableContent += `<td>${formatFileSize(file.size)}</td>`;
-          fileTableContent += `<td class="actions-col"><div class="action-icon-group">`;
-          fileTableContent += `<button class="move-btn" data-action="move" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Move file" aria-label="Move file"><svg class="icon"><use href="/assets/icons.svg#move"></use></svg></button>`;
-          fileTableContent += `<button class="rename-btn" data-action="rename" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Rename file" aria-label="Rename file"><svg class="icon"><use href="/assets/icons.svg#edit"></use></svg></button>`;
-          fileTableContent += `<button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" data-folder="false" title="Delete file" aria-label="Delete file"><svg class="icon"><use href="/assets/icons.svg#trash"></use></svg></button>`;
-          fileTableContent += `</div></td>`;
-          fileTableContent += '</tr>';
-        }
-      });
+            let filePath = currentPath;
+            if (!filePath.endsWith("/")) filePath += "/";
+            filePath += file.name;
 
-      fileTableContent += '</tbody></table>';
-      fileTable.innerHTML = fileTableContent;
+            // Checkbox cell + file row
+            fileTableContent += `<tr class="${file.isEpub ? 'epub-file' : ''}">`;
+            fileTableContent += `<td><input type="checkbox" class="select-item" data-path="${encodeURIComponent(filePath)}" data-name="${escapeHtml(file.name)}" data-type="file"></td>`;
+            const fileIsImage = isImageFile(file.name);
+            fileTableContent += `<td><span class="file-icon">${fileIcon(file.isEpub ? 'book' : (fileIsImage ? 'image' : 'file'))}</span>`;
+            if (fileIsImage) {
+              fileTableContent += `<a href="${downloadUrl(filePath)}" class="file-link image-preview-link">${escapeHtml(file.name)}</a>`;
+            } else {
+              fileTableContent += `<a rel="noopener noreferrer" target="_blank" href="${downloadUrl(filePath)}" class="file-link">${escapeHtml(file.name)}</a>`;
+            }
+            fileTableContent += '</td>';
+            fileTableContent += file.isEpub ? '<td>EPUB</td>' : `<td>${escapeHtml(file.name.split('.').pop().toUpperCase())}</td>`;
+            fileTableContent += `<td>${formatFileSize(file.size)}</td>`;
+            fileTableContent += `<td class="actions-col"><div class="action-icon-group">`;
+            fileTableContent += `<button class="move-btn" data-action="move" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Move file" aria-label="Move file"><svg class="icon"><use href="/assets/icons.svg#move"></use></svg></button>`;
+            fileTableContent += `<button class="rename-btn" data-action="rename" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Rename file" aria-label="Rename file"><svg class="icon"><use href="/assets/icons.svg#edit"></use></svg></button>`;
+            fileTableContent += `<button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" data-folder="false" title="Delete file" aria-label="Delete file"><svg class="icon"><use href="/assets/icons.svg#trash"></use></svg></button>`;
+            fileTableContent += `</div></td>`;
+            fileTableContent += '</tr>';
+          }
+        });
+
+        fileTableContent += '</tbody></table>';
+        fileTable.innerHTML = fileTableContent;
+      }
     }
+
+    // Sequential follow-up requests: avoid contending with /api/files on the
+    // single-threaded device server while still detecting device profile and
+    // loading file-manager plugins once the listing is visible.
+    await fetchVersion();
+    if (typeof loadPlugins === 'function') await loadPlugins('files', ensureJszip);
   }
 
   // Image preview

@@ -4,11 +4,13 @@ The README covers the one-click browser install, which is what almost
 everybody wants. This file is the rest: installing by hand, updating a device
 you already flashed, and reflashing with no cable at all.
 
-Everything here is for the **Xteink X4 Pro**, **Seeed reTerminal Sticky**,
-**M5Stack PaperMono / PaperMono-Lite**, and **Onyx BOOX Picco**. All are ESP32-S3. The plain X4 and the X3 are
+Everything here is for the **Xteink X4 Pro**, **EEGO A4**, and **Onyx BOOX Picco** release targets built by `./scripts_local/build-release.sh` (plus historical **Seeed reTerminal Sticky** and **M5Stack PaperMono / PaperMono-Lite** targets). All are ESP32-S3. The plain X4 and the X3 are
 ESP32-C3, these binaries are not for them, and flashing one there is a
 cross-chip flash. Install [CrossPoint](https://crosspointreader.com/) on those
 instead: it is excellent, and it is what this is built on.
+
+> [!NOTE]
+> **Plugin Release Artifact**: `./scripts_local/build-release.sh` also packages `dist/xmarginalia-audiobookshelf-plugin.zip` (`audiobookshelf/`). Extract it into `/plugins/` or `/.crosspoint/plugins/` on your SD card and enable **Settings -> Connectivity -> Plugins**.
 
 Between the supported S3 devices the firmware protects you. Every image carries its
 board name and both updaters refuse an image built for the other board.
@@ -48,6 +50,15 @@ the red LED flashes, then release it. If it does not restart after flashing, dou
 it off, then press it once to start. PaperMono and Lite use the same image; the Lite omits NFC and LoRa,
 which CrossPlay does not use. See [PaperMono support](papermono.md) for build and
 hardware verification details.
+
+### EEGO A4 (`eego_a4` / `gh_release_eego_a4`)
+
+Build and flash the **EEGO A4** target using PlatformIO (`gh_release_eego_a4`) or `./scripts_local/build-release.sh eego_a4`:
+
+```bash
+./scripts_local/build-release.sh eego_a4
+./scripts_local/flash-device.sh eego_a4
+```
 
 ### BOOX Picco (Single App Slot at 0xE0000)
 

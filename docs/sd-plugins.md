@@ -198,6 +198,10 @@ Stock CrossPoint currently advertises these catalog capabilities:
 | `catalog.list_index_mapping` | `browse.lists_url` can be fetched with `lists_headers` and read with `lists_items`/`lists_fields`, and lists can carry an `id` that fills `{list_id}` and `{list_id_enc}`. | A catalog can build its lists from a service's own folder or tag API, with the token in a header, without a separate server to reshape the answer. |
 | `catalog.list_requirements` | Static and fetched browse lists can declare an optional `requires` array of firmware capabilities; fetched lists can map its path via `lists_fields.requires`. | List discovery hides sections that require unsupported firmware behavior, without tying the index format to any specific plugin or firmware. |
 | `catalog.server_paths` | A JSON catalog accepts server paths (`/path`) where a response supplies a URL: the `download.url_path` answer, a fetched list `url`, and an item `details_url`. Each path is joined to the origin (scheme, host, and port) of the request that returned it. A `url_path` answer that is a server path is fetched with the download headers. | A catalog whose API answers with paths on its own server, rather than full URLs, works without a proxy that rewrites them. |
+| `catalog.zero_based_paging` | Browse templates accept `{page0}` (`page - 1`, 0-based page index) alongside `{page}`. | Supports 0-indexed paginated REST APIs such as Audiobookshelf. |
+| `catalog.require_fields` | `browse.require_fields` (e.g. `["url"]`) drops catalog rows missing those mapped fields after JSON extraction. | Filters mixed-media library results down to downloadable ebook entries. |
+| `catalog.search_mapping` | `browse.search.items` and `browse.search.fields` override `browse.items` / `browse.fields` while a search is active. | Supports APIs whose search endpoint wraps items differently from list paging. |
+| `catalog.progress_sync` | Declarative `"sync"` section (`pull`, `push`, `require_meta`, `{sync.progress}`, `{sync.location}`, `{sync.finished}`) participates in reader **Sync Progress**. | Enables two-way REST reading progress sync (including EPUB CFI spine hints) without a KOSync server. |
 
 Capability names describe firmware behavior available to the entire plugin system.
 They must not encode Plugin Hub policy or ownership, and another plugin may use the
@@ -222,6 +226,7 @@ download filename/username/password; and sidecar path/body.
 | `{plugin_api}` | numeric plugin API level | template fields |
 | `{plugin_capabilities}` | comma-separated advertised capability names | template fields |
 | `{page}` | current 1-based page | browse |
+| `{page0}` | current 0-based page (`page - 1`) | browse |
 | `{offset}` | rows before the current page: `(page - 1) * page_size` | browse |
 | `{limit}` | `page_size` when the request uses `{page}` and not `{offset}`; otherwise `page_size + 1` (the extra row shows that another page exists) | browse |
 | `{list_id}` | `id` of the open list as received (not encoded), empty outside a list; firmware with it advertises `catalog.list_index_mapping` | browse, and download, sidecar, and item details while a list is open |
@@ -318,6 +323,17 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
     "lists_headers": { "Authorization": "Bearer {token}" },  // sent only to lists_url
     "lists_items": "folders",               // dotted path to the array; default "lists"
     "lists_fields": { "title": "title", "id": "folder_id" },  // defaults: title, url, id
+    "require_fields": ["url"],              // optional: drop rows missing any mapped field
+
+    "search": {                             // optional search override
+      "url": "https://.../search?q={query}",
+      "items": "book",                      // optional: overrides browse.items during search
+      "fields": {                           // optional per-field overrides during search
+        "id": "libraryItem.id",
+        "title": "libraryItem.title",
+        "url": "libraryItem.file_id"
+      }
+    },
 
     // --- xml format (ignore the json fields above; fields become selectors) ---
     "item": "response",                     // local-name of the repeating element
@@ -369,6 +385,23 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
     //   "request": { "url": "{cfg.url}/oauth/v2/token", "method": "POST",
     //                "headers": {...}, "body": "...{cfg.username}...{cfg.password}..." },
     //   "token_path": "access_token"
+  },
+
+  "sync": {                                 // optional two-way reader Sync Progress (XMarginalia)
+    "require_meta": "abs_item_id",          // sidecar key required in <book>.meta.json
+    "pull": {
+      "url": "{cfg.server_url}/api/me/progress/{meta.abs_item_id}",
+      "method": "GET",
+      "headers": { "Authorization": "Bearer {token}" },
+      "progress_path": "ebookProgress",     // normalized 0..1 progress (or 0..100 with progress_scale: 100)
+      "location_path": "ebookLocation"      // optional EPUB CFI string ("epubcfi(/6/14!...)")
+    },
+    "push": {
+      "url": "{cfg.server_url}/api/me/progress/{meta.abs_item_id}",
+      "method": "PATCH",
+      "headers": { "Authorization": "Bearer {token}", "Content-Type": "application/json" },
+      "body": "{\"ebookProgress\":{sync.progress},\"ebookLocation\":\"{sync.location}\",\"isFinished\":{sync.finished}}"
+    }
   }
 }
 ```

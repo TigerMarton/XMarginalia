@@ -9,6 +9,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <memory>
 
 #include "../../SilentRestart.h"
 #include "../../activities/network/WifiSelectionActivity.h"
@@ -32,15 +33,17 @@ constexpr const char* kReadPath = "/xkcd/read.bin";
 constexpr const char* kTmpPng = "/xkcd/.tmp.png";
 constexpr const char* kTmpBmp = "/xkcd/.tmp.bmp";
 
-// The comic is blitted a band at a time through a stack buffer rather than
-// assembled whole: the tallest comic in the archive is 6370 rows, which at
-// 1bpp is 74KB, and taking a heap block that size once per comic is exactly
-// the churn that fragments a device with no room to spare. Sixteen rows of the
-// widest possible comic is 1600 bytes -- too big for the stack under the
-// 256-byte rule, so it lives in the .bss as a single fixed pool.
+// Allocated on demand and released on activity exit so ~7 KB is not pinned in
+// internal .bss while XKCD is closed. On PSRAM boards (>4 KB) it goes to PSRAM.
 constexpr int kBandRows = 16;
 constexpr int kMaxStride = (xkcd::kMaxArtWidth + 7) / 8;
-uint8_t gBand[kBandRows * kMaxStride];
+constexpr size_t kBandBytes = static_cast<size_t>(kBandRows) * kMaxStride;
+std::unique_ptr<uint8_t[]> gBand;
+
+uint8_t* ensureBandBuf() {
+  if (!gBand) gBand = makeUniqueNoThrow<uint8_t[]>(kBandBytes);
+  return gBand.get();
+}
 
 // The gap flags for one step, sized from the same arithmetic the window is
 // derived from rather than from a number written down beside it. That
@@ -135,6 +138,7 @@ void XkcdActivity::onExit() {
   }
   Storage.remove(kTmpPng);
   Storage.remove(kTmpBmp);
+  gBand.reset();
   Activity::onExit();
 }
 
@@ -396,7 +400,8 @@ void XkcdActivity::pan(const bool down) {
   xkcd::gapWindowFor(r, viewportH, target, firstRow, rowCount);
 
   xkcd::GapWindow window;
-  if (rowCount > 0 && rowCount <= kMaxGapRows && r.stride <= kMaxStride) {
+  uint8_t* const bandBuf = ensureBandBuf();
+  if (bandBuf && rowCount > 0 && rowCount <= kMaxGapRows && r.stride <= kMaxStride) {
     // Stream the rows past rowIsGap a band at a time and keep only the flags.
     // Holding the window as pixels would be ~19KB on the heap for every tap;
     // as flags it is one byte a row.
@@ -406,10 +411,10 @@ void XkcdActivity::pan(const bool down) {
       int rows = kBandRows;
       if (rows > rowCount - done) rows = rowCount - done;
       const uint32_t at = r.offset + static_cast<uint32_t>(firstRow + done) * r.stride;
-      ok = imageSrc_->read(at, gBand, static_cast<uint32_t>(rows) * r.stride);
+      ok = imageSrc_->read(at, bandBuf, static_cast<uint32_t>(rows) * r.stride);
       if (!ok) break;
       for (int row = 0; row < rows; ++row) {
-        gGapFlags[done + row] = xkcd::rowIsGap(gBand + row * r.stride, r.width) ? 1 : 0;
+        gGapFlags[done + row] = xkcd::rowIsGap(bandBuf + row * r.stride, r.width) ? 1 : 0;
       }
       done += rows;
     }
@@ -440,6 +445,9 @@ void XkcdActivity::drawComic() {
   const fui::Rect view = xkcdui::readerViewport(fui::GfxRendererTarget(renderer).deviceContext());
   const xkcd::Placement p = xkcd::place(r, view.width, view.height, at_);
 
+  uint8_t* const bandBuf = ensureBandBuf();
+  if (!bandBuf) return;
+
   // A band at a time: one seek per band rather than one per row, and a fixed
   // cost whatever the comic.
   int drawn = 0;
@@ -447,12 +455,12 @@ void XkcdActivity::drawComic() {
     int rows = kBandRows;
     if (rows > p.visibleH - drawn) rows = p.visibleH - drawn;
     const uint32_t at = r.offset + static_cast<uint32_t>(p.scrollY + drawn) * r.stride;
-    if (!imageSrc_->read(at, gBand, static_cast<uint32_t>(rows) * r.stride)) {
+    if (!imageSrc_->read(at, bandBuf, static_cast<uint32_t>(rows) * r.stride)) {
       LOG_ERR("XKCD", "artwork read failed for #%u at row %d", static_cast<unsigned>(comic_.num), p.scrollY + drawn);
       return;
     }
     for (int band = 0; band < rows; ++band) {
-      const uint8_t* line = gBand + band * r.stride;
+      const uint8_t* line = bandBuf + band * r.stride;
       const int y = view.y + p.originY + drawn + band;
       for (int x = 0; x < p.visibleW; ++x) {
         // A set bit is ink, which is toybox::blit1bpp's convention and the
@@ -1074,7 +1082,8 @@ bool XkcdActivity::fetchOne(const uint16_t num, char* whyNot, const int whyNotCa
     return false;
   }
   auto srcRow = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(srcStride));
-  if (!srcRow) {
+  uint8_t* const bandBuf = ensureBandBuf();
+  if (!srcRow || !bandBuf) {
     snprintf(whyNot, whyNotCap, "Out of memory converting #%u.", static_cast<unsigned>(num));
     return false;
   }
@@ -1084,12 +1093,12 @@ bool XkcdActivity::fetchOne(const uint16_t num, char* whyNot, const int whyNotCa
       images.close();
       return false;
     }
-    for (int b = 0; b < dstStride; ++b) gBand[b] = static_cast<uint8_t>(~srcRow[b]);
+    for (int b = 0; b < dstStride; ++b) bandBuf[b] = static_cast<uint8_t>(~srcRow[b]);
     // Bits past the width are padding and must be zero, or every row would
     // look inked and the comic would have no gaps for the reader to stop at.
     const int rest = bw % 8;
-    if (rest != 0) gBand[dstStride - 1] &= static_cast<uint8_t>(0xFF << (8 - rest));
-    images.write(gBand, static_cast<size_t>(dstStride));
+    if (rest != 0) bandBuf[dstStride - 1] &= static_cast<uint8_t>(0xFF << (8 - rest));
+    images.write(bandBuf, static_cast<size_t>(dstStride));
   }
   images.close();
 

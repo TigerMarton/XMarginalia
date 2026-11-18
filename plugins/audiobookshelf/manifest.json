@@ -1,0 +1,7 @@
+{
+  "name": "audiobookshelf",
+  "title": "Audiobookshelf",
+  "description": "Browse, download, and sync ebook reading progress directly with Audiobookshelf.",
+  "version": "1.0.0",
+  "mount": "settings"
+}

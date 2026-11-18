@@ -22,6 +22,7 @@ struct CompanionConfig {
 };
 
 struct CompanionQuery {
+  std::string absItemId;
   std::string bookUuid;
   std::string isbn;
   std::string asin;
@@ -66,6 +67,9 @@ std::string extractPageAnchorText(std::string_view pageVisibleText, size_t maxCh
 
 // Build the POST /v1/companion/query JSON body.
 std::string buildQueryJson(const CompanionQuery& query);
+
+// Extract "abs_item_id" from a book's sidecar <book>.meta.json JSON string.
+std::string extractAbsItemId(std::string_view metaJson);
 
 // Parse the JSON response from POST /v1/companion/query (`{"ans":"...","pos":"..."}`
 // or `{"error":"..."}` / `{"detail":"..."}`).

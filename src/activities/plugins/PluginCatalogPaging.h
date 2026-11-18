@@ -24,7 +24,7 @@ inline Paging pagingOf(const std::string_view url, const std::string_view body, 
     });
   };
   if (uses("{offset}")) return Paging::Offset;
-  if (!uses("{page}")) return Paging::Static;
+  if (!uses("{page}") && !uses("{page0}")) return Paging::Static;
   return uses("{limit}") ? Paging::SizedPages : Paging::PageNumber;
 }
 
@@ -37,6 +37,11 @@ inline int limitFor(const Paging paging, const int pageSize) {
 // Whether a row counts toward the page window. The server counted every row it
 // sent, shown or not; a static list counts only the rows it shows.
 inline bool countsTowardPage(const Paging paging, const bool shown) { return paging != Paging::Static || shown; }
+
+inline bool usesListId(const std::string_view url, const std::string_view body) {
+  return url.find("{list_id}") != std::string_view::npos || url.find("{list_id_enc}") != std::string_view::npos ||
+         body.find("{list_id}") != std::string_view::npos || body.find("{list_id_enc}") != std::string_view::npos;
+}
 
 // Counts eligible rows without retaining them. On a static feed the window
 // starts at (page - 1) * pageSize; for server-paged feeds it starts at zero.

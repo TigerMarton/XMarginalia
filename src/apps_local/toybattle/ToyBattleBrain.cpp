@@ -1,6 +1,8 @@
 #include "ToyBattleBrain.h"
 
 #include <cstring>
+#include <memory>
+#include <new>
 
 namespace toybattle {
 namespace {
@@ -461,23 +463,36 @@ Policy policyFor(Skill skill) {
 Move chooseMove(const Observation& obs, Skill skill) { return chooseMove(obs, policyFor(skill)); }
 
 Move chooseMove(const Observation& obs, const Policy& policy) {
-  // Static, not local. `Move` is 34 bytes and this used to be a 512-entry array
-  // on the stack -- 17KB, against a task stack of a few thousand and a house
-  // rule of 256 bytes for a local. The simulator never showed it because a
-  // desktop stack swallows it; a device would have smashed straight through.
-  //
-  // 384 is measured, not guessed: the worst position over 400 games offered
-  // 363 candidates. There is one brain and one turn at a time, so a shared
-  // buffer is safe here, and the cap logs rather than truncating in silence.
-  // Every position the search holds is static for the same reason `options` is.
-  // A Game is 148 bytes and an Observation 160, and the reply search wants six
-  // of them live at once -- about 900 bytes of locals against this project's
-  // 256-byte rule, on a device whose task stacks are a few thousand. There is
-  // one brain and one turn at a time, so sharing them is safe; the last version
-  // of this file put 17KB on the stack and the simulator never noticed.
-  static Game after, worstReply, reply, counter;
-  static Observation foeObs, back;
-  static Move options[kMaxCandidates];
+  // Heap-allocated per move rather than static: ~20 KB of search tables
+  // sitting permanently in .dram0 starves Wi-Fi/lwIP internal DRAM on S3
+  // when ToyBattle is not open. On PSRAM boards, allocations > 4 KB go to
+  // external RAM automatically via CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL.
+  struct ChooseMoveScratch {
+    Game after;
+    Game worstReply;
+    Game reply;
+    Game counter;
+    Observation foeObs;
+    Observation back;
+    Move options[kMaxCandidates];
+    int scores[kMaxCandidates];
+    Move beam[kMaxBeam];
+    int beamOrder[kMaxBeam];
+  };
+  std::unique_ptr<ChooseMoveScratch> scratch(new (std::nothrow) ChooseMoveScratch{});
+  if (!scratch) return Move::draw();
+
+  Game& after = scratch->after;
+  Game& worstReply = scratch->worstReply;
+  Game& reply = scratch->reply;
+  Game& counter = scratch->counter;
+  Observation& foeObs = scratch->foeObs;
+  Observation& back = scratch->back;
+  Move* const options = scratch->options;
+  int* const scores = scratch->scores;
+  Move* const beam = scratch->beam;
+  int* const beamOrder = scratch->beamOrder;
+
   const uint32_t startPositions = detail::cost.positions;
   const int n = detail::candidates(obs, options, kMaxCandidates);
   if (n == 0) return Move::draw();  // nothing is legal; the caller is about to end the game
@@ -487,7 +502,6 @@ Move chooseMove(const Observation& obs, const Policy& policy) {
   Move chosen = options[0];
   int bestScore = kLoss - 1;
   uint32_t bestJitter = 0;
-  static int scores[kMaxCandidates];
 
   // Ties are broken by a hash of the position and the candidate, not by board
   // order. Deterministic, so the same position always produces the same move --
@@ -533,8 +547,6 @@ Move chooseMove(const Observation& obs, const Policy& policy) {
     // The greedy score above is the ordering, so a move has to survive being
     // answered rather than merely look good before anyone answers.
     const int width = policy.beam < n ? policy.beam : n;
-    static Move beam[kMaxBeam];
-    static int beamOrder[kMaxBeam];
     int taken = 0;
     for (int slot = 0; slot < width; ++slot) {
       int pick = -1;

@@ -17,6 +17,7 @@
 #include <Logging.h>
 #include <MD5Builder.h>
 #include <Memory.h>
+#include <ObfuscationUtils.h>
 #include <ResumableFetch.h>
 #include <SecureHttpClient.h>
 #include <Utf8.h>
@@ -92,6 +93,80 @@ namespace {
 class CrossPointHttpServer final : public WebServer {
  public:
   explicit CrossPointHttpServer(uint16_t port) : WebServer(port) {}
+  ~CrossPointHttpServer() override { closePending(); }
+
+  void begin() {
+    WebServer::begin();
+#ifndef SIMULATOR
+    // Disable Nagle's algorithm so header+body and ChunkedReply writes do not
+    // stall 40-200 ms per chunk waiting for browser delayed ACKs.
+    _server.setNoDelay(true);
+#endif
+  }
+
+  // Drain accepted sockets into a small non-blocking pool and only hand
+  // WebServer a socket once HTTP bytes have arrived (`available() > 0`).
+  // Standard WebServer::handleClient() accepts idle/speculative browser
+  // preconnects one at a time and locks out all other requests for
+  // HTTP_MAX_DATA_WAIT (5000 ms) per idle socket.
+  // Returns true if a request was processed or is currently active.
+  bool pumpClient() {
+    const unsigned long now = millis();
+
+    // 1. Accept any waiting TCP connections into free slots (or evict an idle
+    //    0-byte socket if the pool is full and another connection is waiting).
+    while (_server) {
+      int slot = findFreeSlot();
+      if (slot < 0) {
+        if (!_server.hasClient()) break;
+        slot = evictOldestIdleSlot();
+        if (slot < 0) break;
+      }
+      NetworkClient nc = _server.accept();
+      if (nc.fd() < 0) break;
+      pending_[slot].client = std::move(nc);
+      pending_[slot].acceptedAt = now;
+    }
+
+    // 2. Reap closed, EOF, or long-silent (3s with 0 bytes) pending sockets.
+    for (PendingClient& p : pending_) {
+      if (p.client.fd() < 0) continue;
+      if (p.client.available() > 0) continue;
+      const int fd = p.client.fd();
+      uint8_t dummy = 0;
+      const bool peerClosed = fd < 0 || !p.client.connected() || recv(fd, &dummy, 1, MSG_DONTWAIT | MSG_PEEK) == 0;
+      if (peerClosed || (now - p.acceptedAt > 3000)) {
+        p.client.stop();
+        p.client = NetworkClient();
+      }
+    }
+
+    // 3. Hand WebServer the oldest ready socket when idle, never an empty one.
+    if (_currentStatus == HC_NONE) {
+      int readySlot = -1;
+      for (int i = 0; i < static_cast<int>(pending_.size()); ++i) {
+        if (pending_[i].client.fd() < 0 || pending_[i].client.available() <= 0) continue;
+        if (readySlot < 0 || static_cast<long>(pending_[i].acceptedAt - pending_[readySlot].acceptedAt) < 0) {
+          readySlot = i;
+        }
+      }
+      if (readySlot < 0) {
+        return false;
+      }
+      _currentClient = std::move(pending_[readySlot].client);
+      pending_[readySlot].client = NetworkClient();
+      _currentStatus = HC_WAIT_READ;
+      _statusChange = now;
+    } else if (_currentStatus == HC_WAIT_READ && !_currentClient.available() && (now - _statusChange > 3000)) {
+      _currentClient.stop();
+      _currentClient = NetworkClient();
+      _currentStatus = HC_NONE;
+      return false;
+    }
+
+    WebServer::handleClient();
+    return true;
+  }
 
   void releaseRequestArguments() {
     if (_currentArgs) {
@@ -120,6 +195,47 @@ class CrossPointHttpServer final : public WebServer {
   }
 
  private:
+  struct PendingClient {
+    NetworkClient client;
+    unsigned long acceptedAt = 0;
+  };
+  static constexpr size_t MAX_PENDING_CLIENTS = 4;
+  std::array<PendingClient, MAX_PENDING_CLIENTS> pending_;
+
+  int findFreeSlot() const {
+    for (int i = 0; i < static_cast<int>(pending_.size()); ++i) {
+      if (pending_[i].client.fd() < 0) return i;
+    }
+    return -1;
+  }
+
+  int evictOldestIdleSlot() {
+    static constexpr unsigned long IDLE_EVICT_GRACE_MS = 150;
+    const unsigned long now = millis();
+    int victim = -1;
+    for (int i = 0; i < static_cast<int>(pending_.size()); ++i) {
+      if (pending_[i].client.fd() < 0 || pending_[i].client.available() > 0) continue;
+      if (now - pending_[i].acceptedAt < IDLE_EVICT_GRACE_MS) continue;
+      if (victim < 0 || static_cast<long>(pending_[i].acceptedAt - pending_[victim].acceptedAt) < 0) {
+        victim = i;
+      }
+    }
+    if (victim >= 0) {
+      pending_[victim].client.stop();
+      pending_[victim].client = NetworkClient();
+    }
+    return victim;
+  }
+
+  void closePending() {
+    for (PendingClient& p : pending_) {
+      if (p.client.fd() >= 0) {
+        p.client.stop();
+        p.client = NetworkClient();
+      }
+    }
+  }
+
   size_t checkedWrite(const size_t wanted, const size_t sent) {
     if (sent < wanted && _currentClient.connected()) {
       LOG_ERR("WEB", "Client stalled after %u of %u bytes, closing it", static_cast<unsigned>(sent),
@@ -371,6 +487,7 @@ class CrossPointWebServer::RouteHandler final : public RequestHandler {
         {"/api/crypto", HTTP_POST, [](S& s) { s.handleCrypto(); }, nullptr},
         {"/api/fetch", HTTP_POST, [](S& s) { s.handleFetch(); }, nullptr},
         {"/api/book-key", HTTP_POST, [](S& s) { s.handleBookKey(); }, nullptr},
+        {"/api/plugin-config", HTTP_POST, [](S& s) { s.handlePluginConfig(); }, nullptr},
         {"/api/plugin-fs", HTTP_POST, [](S& s) { s.handlePluginFs(); }, [](S& s) { s.handlePluginFsUpload(); }},
 
         {"/api/wifi", HTTP_GET, [](S& s) { s.handleGetWifiNetworks(); }, nullptr},
@@ -561,6 +678,9 @@ void CrossPointWebServer::begin() {
 
   running = true;
 
+  LOG_INF("WEB", "Server listening on port %d (freeHeap=%u, maxAlloc=%u, psramFree=%u)", port,
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
+          static_cast<unsigned>(HalMemory::getPsramHeap().freeBytes));
   LOG_DBG("WEB", "Web server started on port %d", port);
   // Show the correct IP based on network mode
   const String ipAddr = apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
@@ -667,16 +787,16 @@ void CrossPointWebServer::stop() {
   LOG_DBG("WEB", "[MEM] Free heap final: %d bytes", ESP.getFreeHeap());
 }
 
-void CrossPointWebServer::handleClient() {
+bool CrossPointWebServer::handleClient() {
   // Check running flag FIRST before accessing server
   if (!running) {
-    return;
+    return false;
   }
 
   // Double-check server pointer is valid
   if (!server) {
     LOG_DBG("WEB", "WARNING: handleClient called with null server!");
-    return;
+    return false;
   }
 
   // No heartbeat. It fired every 10 seconds and said only that a loop was
@@ -687,7 +807,7 @@ void CrossPointWebServer::handleClient() {
   // still being read. A log line that only says "still running" is worth less
   // than the sixteenth of the ring it costs.
 
-  server->handleClient();
+  const bool didHttpWork = static_cast<CrossPointHttpServer*>(server.get())->pumpClient();
   // WebServer otherwise keeps the last request's argument strings allocated
   // until another request arrives. They are no longer observable once its
   // handler returns, so release them now instead of retaining a JSON body.
@@ -700,6 +820,7 @@ void CrossPointWebServer::handleClient() {
   }
 
   answerDiscovery();
+  return didHttpWork;
 }
 
 // Discovery uses a plain socket: NetworkUDP keeps a 1,460-byte send buffer
@@ -780,7 +901,21 @@ static void sendStaticContent(WebServer* server, const char* data, size_t len, c
   // no-cache: the browser may cache, but must revalidate (conditional GET)
   // before reuse — this is what unlocks 304 responses.
   server->sendHeader("Cache-Control", "no-cache");
-  server->send_P(200, contentType, data, len);
+  // Send Flash payloads in < 1 MSS slices so lwIP allocates at most one ~1 KB
+  // TX pbuf at a time instead of queuing multi-segment bursts in tight DRAM.
+  server->setContentLength(len);
+  server->send(200, contentType, "");
+  server->setContentLength(CONTENT_LENGTH_NOT_SET);
+  static constexpr size_t STATIC_SLICE_BYTES = 1024;
+  size_t offset = 0;
+  while (offset < len) {
+    const size_t chunk = std::min(STATIC_SLICE_BYTES, len - offset);
+    server->sendContent_P(data + offset, chunk);
+    if (!server->client().connected()) break;
+    offset += chunk;
+    if (offset < len) yield();
+    resetTaskWatchdogIfSubscribed();
+  }
 }
 
 void CrossPointWebServer::handleRoot() const {
@@ -819,6 +954,11 @@ void CrossPointWebServer::handleStatus() const {
   doc["mode"] = apMode ? "AP" : "STA";
   doc["rssi"] = apMode ? 0 : WiFi.RSSI();
   doc["freeHeap"] = ESP.getFreeHeap();
+  const auto psram = HalMemory::getPsramHeap();
+  if (psram.totalBytes > 0) {
+    doc["freePsram"] = psram.freeBytes;
+    doc["totalPsram"] = psram.totalBytes;
+  }
   doc["uptime"] = millis() / 1000;
   // ?plugin=<name> adds a stable device ID for that plugin: sha256(secret ||
   // name). Not reversible to any hardware ID, and different per plugin.
@@ -968,8 +1108,20 @@ void CrossPointWebServer::handleFileListData() const {
 void CrossPointWebServer::streamFileToClient(HalFile& file) const {
   NetworkClient client = server->client();
   static constexpr size_t CHUNK_SIZE = 4096;
-  // Off the stack: the web-server task also runs TLS and SD from this stack.
-  auto buffer = makeUniqueNoThrow<uint8_t[]>(CHUNK_SIZE);
+  static constexpr size_t WRITE_SLICE = 1024;
+  // Prefer PSRAM so the 4 KB transfer buffer does not come out of internal DRAM
+  // (allocations <= 4096 bytes otherwise land in internal DRAM on ESP32-S3).
+  HalMemory::PsramBuffer psramBuffer;
+  std::unique_ptr<uint8_t[]> heapBuffer;
+  uint8_t* buffer = nullptr;
+  if (HalMemory::getPsramHeap().totalBytes > 0) {
+    psramBuffer = HalMemory::allocatePsram(CHUNK_SIZE);
+    buffer = psramBuffer.get();
+  }
+  if (!buffer) {
+    heapBuffer = makeUniqueNoThrow<uint8_t[]>(CHUNK_SIZE);
+    buffer = heapBuffer.get();
+  }
   if (!buffer) {
     LOG_ERR("WEB", "OOM: %u byte stream buffer", (unsigned)CHUNK_SIZE);
     return;
@@ -977,18 +1129,20 @@ void CrossPointWebServer::streamFileToClient(HalFile& file) const {
 
   bool ok = true;
   while (ok && file.available()) {
-    const int result = file.read(buffer.get(), CHUNK_SIZE);
+    const int result = file.read(buffer, CHUNK_SIZE);
     if (result <= 0) break;
     const size_t bytesRead = static_cast<size_t>(result);
     size_t totalWritten = 0;
     while (totalWritten < bytesRead) {
       resetTaskWatchdogIfSubscribed();
-      const size_t wrote = client.write(buffer.get() + totalWritten, bytesRead - totalWritten);
-      if (wrote == 0) {
+      const size_t slice = std::min(WRITE_SLICE, bytesRead - totalWritten);
+      const size_t wrote = client.write(buffer + totalWritten, slice);
+      if (wrote < slice) {
         ok = false;
         break;
       }
       totalWritten += wrote;
+      if (totalWritten < bytesRead) yield();
     }
   }
   client.clear();
@@ -2251,6 +2405,40 @@ void CrossPointWebServer::handlePluginFile() const {
     return;
   }
   const std::string path = pluginDir + "/" + file.c_str();
+  if (strcasecmp(file.c_str(), "config.json") == 0) {
+    std::string raw;
+    if (!Storage.readFileToString("WEB", path, 4096, raw)) {
+      server->send(404, "text/plain", "not found");
+      return;
+    }
+    JsonDocument doc;
+    if (deserializeJson(doc, raw) == DeserializationError::Ok && doc.is<JsonObject>()) {
+      static constexpr const char OBF_SUFFIX[] = "_obf";
+      static constexpr size_t OBF_SUFFIX_LEN = sizeof(OBF_SUFFIX) - 1;
+      JsonObject obj = doc.as<JsonObject>();
+      std::vector<std::string> obfKeys;
+      std::vector<std::string> hasFlags;
+      obfKeys.reserve(4);
+      hasFlags.reserve(4);
+      for (JsonPair kv : obj) {
+        const std::string key = kv.key().c_str();
+        if (key.size() > OBF_SUFFIX_LEN && key.compare(key.size() - OBF_SUFFIX_LEN, OBF_SUFFIX_LEN, OBF_SUFFIX) == 0) {
+          obfKeys.push_back(key);
+          const char* rawVal = kv.value().as<const char*>();
+          if (rawVal && rawVal[0] != '\0') hasFlags.push_back("has_" + key.substr(0, key.size() - OBF_SUFFIX_LEN));
+        } else if (key == "password") {
+          const char* rawVal = kv.value().as<const char*>();
+          if (rawVal && rawVal[0] != '\0') hasFlags.emplace_back("has_password");
+        }
+      }
+      for (const auto& k : obfKeys) obj.remove(k);
+      obj.remove("password");
+      for (const auto& flag : hasFlags) obj[flag] = true;
+      server->sendHeader("Cache-Control", "no-store");
+      sendJson(doc);
+      return;
+    }
+  }
   HalFile f = Storage.open(path.c_str(), O_RDONLY);
   if (!f || !f.isOpen() || f.isDirectory()) {
     server->send(404, "text/plain", "not found");
@@ -2973,6 +3161,129 @@ void CrossPointWebServer::handleBookKey() {
     return;
   }
   server->send(200, "application/json", "{\"ok\":true}");
+}
+
+void CrossPointWebServer::handlePluginConfig() {
+  if (rejectIfPluginsDisabled()) return;
+  JsonDocument req;
+  if (!readJsonBody(req)) return;
+
+  const String plugin = req["plugin"] | "";
+  if (!safeComponent(plugin)) {
+    server->send(400, "application/json", "{\"error\":\"bad plugin name\"}");
+    return;
+  }
+  const std::string pluginDir = PluginLocations::findPluginDir(plugin.c_str());
+  if (pluginDir.empty() || !protectedpaths::isPluginPath(pluginDir)) {
+    server->send(404, "application/json", "{\"error\":\"plugin not found\"}");
+    return;
+  }
+
+  const std::string cfgPath = pluginDir + "/config.json";
+  JsonDocument cfgDoc;
+  std::string existingRaw;
+  if (Storage.readFileToString("WEB", cfgPath, 4096, existingRaw) &&
+      deserializeJson(cfgDoc, existingRaw) == DeserializationError::Ok && cfgDoc.is<JsonObject>()) {
+    // Loaded existing config object cleanly.
+  } else {
+    cfgDoc.to<JsonObject>();
+  }
+
+  static constexpr const char OBF_SUFFIX[] = "_obf";
+  static constexpr size_t OBF_SUFFIX_LEN = sizeof(OBF_SUFFIX) - 1;
+  const auto endsWithObf = [](const std::string& key) {
+    return key.size() > OBF_SUFFIX_LEN && key.compare(key.size() - OBF_SUFFIX_LEN, OBF_SUFFIX_LEN, OBF_SUFFIX) == 0;
+  };
+  const auto isReservedSecretKey = [&](const std::string& key) {
+    return key.empty() || key == "password" || endsWithObf(key) || key.rfind("has_", 0) == 0;
+  };
+
+  if (req["config"].is<JsonObjectConst>()) {
+    for (JsonPairConst kv : req["config"].as<JsonObjectConst>()) {
+      const std::string key = kv.key().c_str();
+      if (isReservedSecretKey(key)) continue;
+      if (kv.value().isNull()) {
+        cfgDoc.remove(key);
+      } else {
+        cfgDoc[key] = kv.value();
+      }
+    }
+  }
+
+  if (req["preserveSecrets"].is<JsonArrayConst>()) {
+    for (JsonVariantConst v : req["preserveSecrets"].as<JsonArrayConst>()) {
+      const char* rawKey = v.as<const char*>();
+      if (!rawKey || !rawKey[0]) continue;
+      const std::string key(rawKey);
+      if (endsWithObf(key)) continue;
+      const std::string obfKey = key + OBF_SUFFIX;
+      if (!cfgDoc[obfKey].is<const char*>() && cfgDoc[key].is<const char*>()) {
+        const char* legacyPlain = cfgDoc[key].as<const char*>();
+        if (legacyPlain && legacyPlain[0] != '\0') {
+          cfgDoc[obfKey] = obfuscation::obfuscateToBase64(legacyPlain);
+        }
+      }
+      cfgDoc.remove(key);
+    }
+  }
+
+  if (req["clearSecrets"].is<JsonArrayConst>()) {
+    for (JsonVariantConst v : req["clearSecrets"].as<JsonArrayConst>()) {
+      const char* rawKey = v.as<const char*>();
+      if (!rawKey || !rawKey[0]) continue;
+      const std::string key(rawKey);
+      cfgDoc.remove(key);
+      if (!endsWithObf(key)) cfgDoc.remove(key + OBF_SUFFIX);
+    }
+  }
+
+  if (req["secrets"].is<JsonObjectConst>()) {
+    for (JsonPairConst kv : req["secrets"].as<JsonObjectConst>()) {
+      const std::string key = kv.key().c_str();
+      if (key.empty() || endsWithObf(key)) continue;
+      const std::string obfKey = key + OBF_SUFFIX;
+      cfgDoc.remove(key);
+      const std::string val = kv.value() | "";
+      if (!val.empty()) {
+        cfgDoc[obfKey] = obfuscation::obfuscateToBase64(val);
+      } else {
+        cfgDoc.remove(obfKey);
+      }
+    }
+  }
+
+  // Never keep a legacy plaintext password alongside password_obf.
+  if (cfgDoc["password_obf"].is<const char*>()) cfgDoc.remove("password");
+
+  std::string out;
+  serializeJson(cfgDoc, out);
+  const std::string tmpPath = cfgPath + ".tmp";
+  Storage.remove(tmpPath.c_str());
+  {
+    HalFile f;
+    if (!Storage.openFileForWrite("PLG", tmpPath, f)) {
+      server->send(500, "application/json", "{\"error\":\"cannot write config\"}");
+      return;
+    }
+    const size_t written = f.write(out.data(), out.size());
+    f.flush();
+    if (written != out.size()) {
+      f.close();
+      Storage.remove(tmpPath.c_str());
+      server->send(500, "application/json", "{\"error\":\"sd write failed\"}");
+      return;
+    }
+  }
+  if (!Storage.replaceFile(tmpPath.c_str(), cfgPath.c_str())) {
+    Storage.remove(tmpPath.c_str());
+    server->send(500, "application/json", "{\"error\":\"config replace failed\"}");
+    return;
+  }
+
+  JsonDocument resp;
+  resp["ok"] = true;
+  resp["has_password"] = cfgDoc["password_obf"].is<const char*>();
+  sendJson(resp);
 }
 
 // Served even while plugins are disabled: its empty state tells the user how to enable them.

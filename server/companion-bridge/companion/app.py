@@ -224,6 +224,7 @@ class CompanionEngine:
     def handle_query(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         """Process an e-reader companion request and return `(http_status, json_body)`."""
         identity = BookQueryIdentity(
+            abs_item_id=str(payload.get("abs_item_id") or ""),
             book_uuid=str(payload.get("book_uuid") or payload.get("package_id") or ""),
             isbn=str(payload.get("isbn") or ""),
             asin=str(payload.get("asin") or ""),

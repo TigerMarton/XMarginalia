@@ -14,6 +14,7 @@
 #include "../../DevMode.h"
 #include "../../WifiCredentialStore.h"
 #include "../../network/WifiPowerSaveGuard.h"
+#include "../../util/PluginLocations.h"
 #include "../bridge/BridgeHttp.h"
 
 #if defined(FREEINK_NET_WOLFSSL)
@@ -162,6 +163,16 @@ bool CompanionClient::loadConfig(CompanionConfig& out) {
           return true;
         }
       }
+    }
+  }
+
+  // Optional fallback: if no /.crosspoint/companion.json exists, allow
+  // reading companion_url / companion_host from the Audiobookshelf plugin config.
+  const std::string absDir = PluginLocations::findPluginDir("audiobookshelf");
+  if (!absDir.empty()) {
+    std::string raw;
+    if (Storage.readFileToString(kTag, absDir + "/config.json", 4096, raw) && parseConfigJson(raw, out)) {
+      return true;
     }
   }
 

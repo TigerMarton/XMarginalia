@@ -21,6 +21,13 @@ Everything above the marker is written by hand.
 
 <!-- releases, newest first -->
 
+### 1.1.0
+
+- **Audiobookshelf SD Plugin**: Bundled direct Audiobookshelf plugin (`plugins/audiobookshelf/`) with library browsing/search, existing SD book `.meta.json` sidecar matching, offline progress outbox, and two-way EPUB CFI / progress sync in the reader.
+- **EEGO Reader A4 & BOOX Picco**: Added EEGO A4 (`gh_release_eego_a4` / `eego_a4`) board support, factory MAC UID in About (`#4520`), slim inset progress bar, 500 ms idle and 400 ms wake hold (`#4494`), plus Picco `#4362` absolute grayscale, `#4510` single-slot upload guards (`app_slot_guard.py`), and fail-open installer checks.
+- **CrossInk 2.0, Status Bar & OPDS**: Restored 5-slot bottom modular status bar (`Bottom Mid-Left` / `Bottom Mid-Right`), placed OPDS browser under File Transfer, preserved CrossInk touch/edge/tilt/side-button/power-shortcut controls, and unified `freeink-sdk` PSRAM wolfSSL (`SecureClient.cpp`) + `Opds/` fixes.
+- **CrossPlay `v1.15.1` Sync & Docs**: Ported unified `HttpDownloader` door & 401 retry, build-date `ClockFloor`, Show File Extensions (`#4450`), Hide New Files in Recent & Settings Refresh Library (`#4509`), font cache cleanup (`#4469`), bottom margin (`#4444`), `OptionPopup` scrolling (`#4460`), dictionary side buttons (`#4512`), Study paging/clock/`.lst` glyph lists/header alignment, Notes `EDIT ON YOUR PHONE`, Wikipedia install font/margins, and itemized differences in [xmarginalia-differences.md](xmarginalia-differences.md).
+
 ### 1.0.0
 
 - **XMarginalia v1.0.0**: established the standalone XMarginalia product, unifying CrossPlay, CrossInk, and CrossPoint with BOOX Picco compatibility.

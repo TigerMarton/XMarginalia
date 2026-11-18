@@ -83,6 +83,16 @@ check("an unknown failure keeps its own text", friendly(new Error("Image verific
 check("the install's catch posts by that decision",
   /tellBoard\(userSide\(err\) \? "info" : "error"/.test(src), true);
 
+// Read, checked, and only then written: the order is the guard.
+const readAt = src.indexOf(".readFlash(OFF_PARTITIONS, PARTITION_TABLE_SIZE)");
+const checkAt = src.indexOf("if (table && hasVendorRecovery(table))");
+const writeAt = src.indexOf("loader.writeFlash(");
+check("the device's table is read and checked before the one write", readAt > 0 && readAt < checkAt && checkAt < writeAt, true);
+// Best effort, never a new way to fail: a read that throws must leave every
+// X4 Pro and Sticky installing exactly as before the check existed.
+const failOpen = src.slice(readAt, checkAt);
+check("a table that cannot be read installs as before", /\.catch\(function \(\) \{\s*return null;\s*\}\)/.test(failOpen), true);
+
 // The write skips the NVS partition. The release image carries NVS as 0xFF
 // padding between the partition table and the app, and writing it erased the
 // secret behind the device's id (and its settings and Wi-Fi) on every

@@ -151,3 +151,10 @@ files are also written _to_ Mario rather than _by_ him, which is why they say
 
 [PaperMono support](papermono.md) documents the PaperMono / Lite hardware,
 build environments, installation assets and device verification steps.
+
+[BOOX Picco](picco.md) covers Picco's single-slot partition safety rules,
+`app_only_upload.py` / `app_slot_guard.py`, and PSRAM memory layout.
+
+[XMarginalia Architecture & Upstream Differences](xmarginalia-differences.md)
+itemizes every XMarginalia feature, board profile, SDK change, script, and
+upstream fix not present in CrossPoint, CrossInk, or CrossPlay.

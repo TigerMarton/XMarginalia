@@ -80,6 +80,8 @@ All values are strings in the event's `vars` object:
 | `start_progress_bp` | first counted whole-book progress, 0..10000 basis points |
 | `end_progress_bp` | monotonic-clamped final progress, 0..10000 basis points |
 | `progress_scale` | literal `10000` |
+| `progress` | fractional `0.0000`..`1.0000` normalized progress computed from `end_progress_bp` / `end_percent` / `percent` (`{event.progress}`) |
+| `finished` | `"true"` when progress is complete (>= `0.9999` / `100%`), else `"false"` (`{event.finished}`) |
 
 Only successful ordinary forward turns count. A displayed page contributes
 when it remains visible for at least 2 seconds; one dwell is capped at 1800

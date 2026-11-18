@@ -75,6 +75,7 @@ def token_similarity(a: str, b: str) -> float:
 
 @dataclass
 class BookQueryIdentity:
+    abs_item_id: str = ""
     book_uuid: str = ""
     isbn: str = ""
     asin: str = ""
@@ -120,8 +121,8 @@ class BookResolver:
 
     def resolve(self, query: BookQueryIdentity) -> tuple[ParsedBook | None, str]:
         """Return `(matched_book, resolution_method)` or `(None, 'not_found')`."""
-        # Tier 1: Exact ID / Hash / Alias cache match
-        for key in (query.book_uuid, query.isbn, query.asin, query.ko_md5):
+        # Tier 1: Exact ID / Hash / Alias cache match (ABS item ID first)
+        for key in (query.abs_item_id, query.book_uuid, query.isbn, query.asin, query.ko_md5):
             k = (key or "").strip().lower()
             if k and k in self._alias_cache:
                 cid = self._alias_cache[k]

@@ -14,6 +14,10 @@ SUITES=(
   "settingsorder"
   "tabletop"
   "companion"
+  "plugins"
+  "appslot"
+  "clockfloor"
+  "httpdoor"
 )
 
 TOTAL_CHECKS=0

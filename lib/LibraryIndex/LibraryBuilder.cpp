@@ -1053,6 +1053,14 @@ bool emitIndex(const char* folderStagePath, WalkState& st, const uint16_t* order
   return installNewIndex();
 }
 
+// ASCII case-insensitive match against an already lower-case name (FAT names
+// are case-insensitive).
+bool equalsLowerAscii(const std::string_view name, const std::string_view lower) {
+  return std::equal(name.begin(), name.end(), lower.begin(), lower.end(), [](const char a, const char b) {
+    return (a >= 'A' && a <= 'Z' ? static_cast<char>(a + ('a' - 'A')) : a) == b;
+  });
+}
+
 }  // namespace
 
 const char* libraryIndexPath() { return INDEX_PATH; }
@@ -1064,7 +1072,12 @@ bool isLibraryBookFile(const std::string_view path) {
     const size_t slash = path.find('/', start);
     const std::string_view name = path.substr(start, slash - start);
     if (name != "." && isHiddenOrSidecar(name)) return false;
-    if (slash == std::string_view::npos) break;
+    if (slash == std::string_view::npos) {
+      // Firmware-written text files are not books. They stay reachable from
+      // the file browser.
+      if (equalsLowerAscii(name, "my clippings.txt") || equalsLowerAscii(name, "crash_report.txt")) return false;
+      break;
+    }
     start = slash + 1;
   }
   return FsHelpers::checkFileExtension(path, ".epub") || FsHelpers::checkFileExtension(path, ".txt") ||

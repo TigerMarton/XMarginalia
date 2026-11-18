@@ -24,7 +24,8 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
  public:
   explicit KOReaderSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& epubPath,
                                 CrossPointPosition localPosition, SavedProgressPosition localKoPos,
-                                std::string localChapterName, const bool pluginEventsOnly = false);
+                                std::string localChapterName, bool pluginEventsOnly = false, bool pluginSync = false,
+                                std::string pluginSyncTitle = {});
 
   void onEnter() override;
   void onExit() override;
@@ -34,6 +35,7 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
 
  private:
   enum State {
+    CHOOSE_TARGET,
     WIFI_SELECTION,
     CONNECTING,
     SYNCING,
@@ -79,7 +81,12 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   // Reuses the KOReader WiFi connect/drain/return flow without a server: flush
   // plugged-outbox events instead of syncing progress.
   bool pluginEventsOnly = false;
+  // Two-way sync via an SD plugin (declarative "sync" manifest block) instead
+  // of a KOReader server.
+  bool pluginSync = false;
+  std::string pluginSyncTitle;
 
+  void beginWifiSync();
   void onWifiSelectionComplete(bool success);
   void performSync();
   void performUpload();

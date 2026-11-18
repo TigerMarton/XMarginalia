@@ -115,6 +115,9 @@ window.CrossPoint = window.CrossPoint || {
     const r = await fetch(url, { method: 'POST', body: form });
     return this._readResponse(r, '/api/plugin-fs');
   },
+  saveConfig(plugin, payload) {
+    return this._post('/api/plugin-config', Object.assign({}, payload || {}, { plugin }));
+  },
   async fetchToSd(plugin, url, dest, headers, options) {
     const method = ((options && options.method) || 'GET').toUpperCase();
     const body = (options && options.body) || '';
@@ -195,6 +198,7 @@ async function loadPlugins(mount, beforeLoad) {
         relay: (m, u, h, b) => CrossPoint.relay(p.name, m, u, h, b),
         crypto: (op, f) => CrossPoint.crypto(op, f),
         writeFile: (path, d) => CrossPoint.writeFile(p.name, path, d),
+        saveConfig: (cfg) => CrossPoint.saveConfig(p.name, cfg),
         fetchToSd: (u, dest, h, o) => CrossPoint.fetchToSd(p.name, u, dest, h, o),
         registerAction: (a, fn) => CrossPoint.registerAction(p.name, a, fn),
         pluginFile: (f) => '/plugin?name=' + encodeURIComponent(p.name) + '&file=' + encodeURIComponent(f)

@@ -66,10 +66,10 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
-if grep -q "post:scripts_local/app_only_upload.py" platformio.ini; then
-  echo "  [PASS] platformio.ini enforces app_only_upload.py for Picco"
+if grep -q "post:scripts/app_only_upload.py" platformio.ini && grep -q "post:scripts_local/app_slot_guard.py" platformio.ini; then
+  echo "  [PASS] platformio.ini enforces app_only_upload.py and app_slot_guard.py for Picco"
 else
-  echo "  [FAIL] platformio.ini missing app_only_upload.py post-script for Picco"
+  echo "  [FAIL] platformio.ini missing app_only_upload.py / app_slot_guard.py post-scripts for Picco"
   ERRORS=$((ERRORS + 1))
 fi
 

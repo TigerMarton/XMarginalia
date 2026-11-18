@@ -17,6 +17,7 @@
 #include "RecentBooksStore.h"
 #include "clippings/SelectionGeometry.h"
 #include "components/HeaderBackTapTarget.h"
+#include "components/HeaderLayoutRecord.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -495,6 +496,9 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
     props.styles.normal.border = fui::Paint::solid(fui::Color::Black);
     props.styles.normal.borderWidth = tokens.headerUnderline;
   }
+  // fork-local seam: apps that draw their own words in this band read the row
+  // from here (HeaderLayoutRecord.h).
+  props.layoutOut = &HeaderLayoutRecord::last;
   fui::header(ui.frame, band, props);
 }
 
@@ -1080,9 +1084,11 @@ void BaseTheme::drawModularStatusBar(GfxRenderer& renderer, const StatusBarConte
   }
 
   // Bottom Bar
+  const int bottomStatusHeight =
+      ctx.fillMargin ? UITheme::getReaderStatusBarHeight() : UITheme::getInstance().getBottomStatusBarHeight();
   if (sb.hasBottomTextLane()) {
-    const int bottomTextY = screenHeight - UITheme::getInstance().getBottomStatusBarHeight() - orientedMarginBottom -
-                            ctx.paddingBottom - 4 + BoardConfig::ACTIVE.statusBarOffsetY - ctx.textYOffset;
+    const int bottomTextY = screenHeight - bottomStatusHeight - orientedMarginBottom - ctx.paddingBottom - 4 +
+                            BoardConfig::ACTIVE.statusBarOffsetY - ctx.textYOffset;
     bottomLeftWidth = drawModularLane(renderer, sb.bottomLeft, sb.bottomMidLeft, sb.bottomCenter, sb.bottomMidRight,
                                       sb.bottomRight, bottomTextY, leftClusterX, rightClusterX, ctx, sb, metrics);
   }
@@ -1090,8 +1096,8 @@ void BaseTheme::drawModularStatusBar(GfxRenderer& renderer, const StatusBarConte
   // Draw Bookmark icon
   if (ctx.isPageBookmarked) {
     if (sb.hasBottomTextLane()) {
-      const int bottomTextY = screenHeight - UITheme::getInstance().getBottomStatusBarHeight() - orientedMarginBottom -
-                              ctx.paddingBottom - 4 + BoardConfig::ACTIVE.statusBarOffsetY - ctx.textYOffset;
+      const int bottomTextY = screenHeight - bottomStatusHeight - orientedMarginBottom - ctx.paddingBottom - 4 +
+                              BoardConfig::ACTIVE.statusBarOffsetY - ctx.textYOffset;
       const int bookmarkX = leftClusterX + (bottomLeftWidth > 0 ? (bottomLeftWidth + 8) : 0);
       drawBookmarkStatusIcon(renderer, bookmarkX, bottomTextY + 5);
     } else if (sb.hasTopTextLane()) {
@@ -1108,27 +1114,46 @@ void BaseTheme::drawModularStatusBar(GfxRenderer& renderer, const StatusBarConte
 
   // Draw Progress Bar
   if (sb.showsProgressBar()) {
-    const int barMarginLeft = ctx.fillMargin ? 0 : orientedMarginLeft;
-    const int barMarginRight = ctx.fillMargin ? 0 : orientedMarginRight;
-    const int progressBarMaxWidth = screenWidth - barMarginLeft - barMarginRight;
     size_t progress = 0;
     if (sb.progressBarMode == CrossPointSettings::STATUS_BAR_PROGRESS_BAR::BOOK_PROGRESS) {
       progress = static_cast<size_t>(ctx.bookProgress);
     } else {
       progress = (ctx.pageCount > 0) ? (static_cast<float>(ctx.currentPage) / ctx.pageCount) * 100 : 0;
     }
-    const int barWidth = progressBarMaxWidth * progress / 100;
-    int progressBarY = 0;
-    int barHeight = sb.progressBarHeightPx;
 
-    if (sb.progressBarPosition == CrossPointSettings::STATUS_BAR_PROGRESS_POS_TOP) {
-      progressBarY = orientedMarginTop + ctx.paddingTop;
+    if (BoardConfig::isEegoA4() && ctx.fillMargin &&
+        sb.progressBarPosition != CrossPointSettings::STATUS_BAR_PROGRESS_POS_TOP) {
+      // EEGO A4: a slim line hugging the bottom bezel instead of a slab filling
+      // the bottom inset. Its top row sits edgeGap px above the panel edge and
+      // it fills down to the edge, so no gap shows under it at any viewing
+      // angle. Both ends stop where the rounded corners start to cut in.
+      constexpr int edgeGap = 7;
+      const int barY = screenHeight - edgeGap - sb.progressBarHeightPx - ctx.paddingBottom;
+      const int radius = corner;
+      const int d = std::max(0, radius - edgeGap);
+      const int intrusion =
+          radius > 0 ? static_cast<int>(std::ceil(radius - std::sqrt(static_cast<float>(radius * radius - d * d)))) : 0;
+      const int barLeft = std::max(orientedMarginLeft, intrusion + 1);
+      const int barRight = screenWidth - std::max(orientedMarginRight, intrusion + 1);
+      const int barWidth = std::max(0, barRight - barLeft) * static_cast<int>(std::min<size_t>(progress, 100)) / 100;
+      renderer.fillRect(barLeft, barY, barWidth, sb.progressBarHeightPx + edgeGap, true);
     } else {
-      progressBarY =
-          screenHeight - orientedMarginBottom - sb.progressBarHeightPx - ctx.paddingBottom + (ctx.fillMargin ? 1 : 0);
-      barHeight += (ctx.fillMargin ? orientedMarginBottom - 1 : 0);
+      const int barMarginLeft = ctx.fillMargin ? 0 : orientedMarginLeft;
+      const int barMarginRight = ctx.fillMargin ? 0 : orientedMarginRight;
+      const int progressBarMaxWidth = screenWidth - barMarginLeft - barMarginRight;
+      const int barWidth = progressBarMaxWidth * progress / 100;
+      int progressBarY = 0;
+      int barHeight = sb.progressBarHeightPx;
+
+      if (sb.progressBarPosition == CrossPointSettings::STATUS_BAR_PROGRESS_POS_TOP) {
+        progressBarY = orientedMarginTop + ctx.paddingTop;
+      } else {
+        progressBarY =
+            screenHeight - orientedMarginBottom - sb.progressBarHeightPx - ctx.paddingBottom + (ctx.fillMargin ? 1 : 0);
+        barHeight += (ctx.fillMargin ? orientedMarginBottom - 1 : 0);
+      }
+      renderer.fillRect(barMarginLeft, progressBarY, barWidth, barHeight, true);
     }
-    renderer.fillRect(barMarginLeft, progressBarY, barWidth, barHeight, true);
   }
 }
 

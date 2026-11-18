@@ -1,5 +1,6 @@
 #include "UITheme.h"
 
+#include <BoardConfig.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
@@ -216,6 +217,18 @@ int UITheme::getProgressBarHeight() {
   const ThemeMetrics metrics = UITheme::getInstance().getMetrics();
   const auto sb = SETTINGS.statusBarSpec();
   return sb.showsProgressBar() ? (sb.progressBarHeightPx + metrics.progressBarMarginTop) : 0;
+}
+
+// Height the reader's bottom status bar takes above the bottom inset. The EEGO A4 draws
+// its bottom progress bar inside the inset (BaseTheme::drawModularStatusBar), so the bar takes none.
+int UITheme::getReaderStatusBarHeight() {
+  const auto sb = SETTINGS.statusBarSpec();
+  const int base = getBottomStatusBarHeight();
+  if (BoardConfig::isEegoA4() && sb.showsProgressBar() &&
+      sb.progressBarPosition == CrossPointSettings::STATUS_BAR_PROGRESS_POS_BOTTOM) {
+    return base - getProgressBarHeight();
+  }
+  return base;
 }
 
 // Centered text implementation that takes the safe area into account
