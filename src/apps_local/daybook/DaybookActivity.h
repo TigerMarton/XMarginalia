@@ -26,23 +26,20 @@
 #include "../../activities/Activity.h"
 #include "DaybookCore.h"
 
-class DaybookWeb;
 
 class DaybookActivity final : public Activity {
  public:
   DaybookActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("Daybook", renderer, mappedInput) {}
-  ~DaybookActivity() override;
 
   static std::unique_ptr<Activity> create(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   void onEnter() override;
-  void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
 
  private:
-  enum class View : uint8_t { Month, List, Day, Detail, Form, Settings, Todo, Lists, TaskForm, ListForm, Web, Wallpapers };
+  enum class View : uint8_t { Month, List, Day, Detail, Form, Settings, Todo, Lists, TaskForm, ListForm, Wallpapers };
   enum class Act : uint8_t {
     PrevMonth,
     NextMonth,
@@ -67,7 +64,7 @@ class DaybookActivity final : public Activity {
     PickWallpaper,
     SetWallpaper,
     ToggleAgenda,
-    OpenWeb,
+    InstallPlugin,
     Back,
     OpenLists,
     SelectList,
@@ -115,10 +112,6 @@ class DaybookActivity final : public Activity {
   daybook::Day selected_ = 0;
   int firstDay_ = 1;  // 0 Sunday, 1 Monday, 6 Saturday
   bool weekNums_ = true;
-  std::shared_ptr<DaybookWeb> web_;  // the "Web" screen's server, while that screen is open
-  bool devPaused_ = false;           // developer mode yielded its ports to the web screen
-  std::string webUrl_;
-  std::string webName_;
   bool agenda_ = false;    // draw today's agenda on the sleep screen
   std::vector<std::string> wallChoices_;  // the .bmp files on the card, while the picker is open
   std::string wallpaper_;  // sleep wallpaper path; "" = the default
@@ -151,9 +144,6 @@ class DaybookActivity final : public Activity {
   bool saveTasks();
   bool saveLists();
   void saveSettings();
-  void startWeb();
-  void stopWeb();
-  void drawWeb();
   void drawWallpapers();
   void refreshToday();
   void back();

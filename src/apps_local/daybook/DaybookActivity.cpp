@@ -4,7 +4,6 @@
 #include <Logging.h>
 #include <Memory.h>
 #ifndef SIMULATOR
-#include <WiFi.h>
 #endif
 
 #include <algorithm>
@@ -15,12 +14,10 @@
 #include <variant>
 
 #include "../../CrossPointSettings.h"
-#include "../../DevMode.h"
 #include "../../activities/ActivityResult.h"
-#include "../../activities/network/WifiSelectionActivity.h"
 #include "../../activities/util/KeyboardEntryActivity.h"
+#include "DaybookPlugin.h"
 #include "DaybookSleep.h"
-#include "DaybookWeb.h"
 #include "../../components/HeaderBackTapTarget.h"
 #include "../../components/UITheme.h"
 #include "../ClockFloor.h"
@@ -132,8 +129,6 @@ std::unique_ptr<Activity> DaybookActivity::create(GfxRenderer& renderer, MappedI
   return makeUniqueNoThrow<DaybookActivity>(renderer, mappedInput);
 }
 
-DaybookActivity::~DaybookActivity() = default;
-
 // --- Lifecycle and storage ------------------------------------------------------------------
 
 void DaybookActivity::onEnter() {
@@ -210,85 +205,6 @@ void DaybookActivity::changed() {
   requestUpdate();
 }
 
-// --- The Web screen --------------------------------------------------------------------------
-
-// Same order as Notes' phone screen: Wi-Fi first (the picker only when there is no connection, because it
-// drops a working one), then the server, then a screen with the address on it.
-void DaybookActivity::startWeb() {
-#ifndef SIMULATOR
-  if (WiFi.status() != WL_CONNECTED) {
-    WiFi.mode(WIFI_STA);
-    startActivityForResult(makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput),
-                           [this](const ActivityResult& result) {
-                             if (result.isCancelled || WiFi.status() != WL_CONNECTED) {
-                               message_ = "The page needs Wi-Fi. Nothing changed.";
-                               changed();
-                               return;
-                             }
-                             startWeb();
-                           });
-    return;
-  }
-#endif
-  // Developer Mode holds ports 80 and 81 while its toggle is on; it yields while this screen is up.
-  devmode::pause();
-  devPaused_ = true;
-  web_ = std::make_shared<DaybookWeb>();
-  if (!web_->begin()) {
-    stopWeb();
-    message_ = "Could not start the web page. Try again.";
-    changed();
-    return;
-  }
-  webUrl_ = web_->url();
-  webName_ = web_->readableUrl();
-  view_ = View::Web;
-  changed();
-}
-
-void DaybookActivity::stopWeb() {
-  if (web_) {
-    web_->stop();
-    web_.reset();
-  }
-  if (devPaused_) {  // guarded by the flag: the failed-start path never held the yield
-    devPaused_ = false;
-    devmode::resume();
-  }
-}
-
-void DaybookActivity::onExit() {
-  stopWeb();
-  Activity::onExit();
-}
-
-void DaybookActivity::drawWeb() {
-  const int sw = renderer.getScreenWidth();
-  int y = drawHeader("Web page", "");
-  const auto line = [&](const int font, const std::string& text, const bool center) {
-    const int lh = renderer.getLineHeight(font) + 8;
-    textBox(font, 0, y, sw, lh, text, center);
-    y += lh;
-  };
-  y += 12;
-  line(kBoldSmall, "On a phone or PC on the same Wi-Fi, open:", true);
-  y += 10;
-  line(kBold, webUrl_, true);
-  if (webName_ != webUrl_) {
-    y += 6;
-    line(kSmall, "or", true);
-    line(kBoldSmall, webName_, true);
-  }
-  y += 24;
-  const std::string note =
-      "Add, edit and tick events and tasks there. This page stays open until you press Back; changes are "
-      "saved to the card straight away.";
-  for (const std::string& l : renderer.wrappedText(kSmall, note.c_str(), sw - 2 * kM, 6)) {
-    renderer.drawText(kSmall, kM, y, l.c_str(), true);
-    y += renderer.getLineHeight(kSmall) + 2;
-  }
-}
-
 // --- Input -------------------------------------------------------------------------------------
 
 void DaybookActivity::back() {
@@ -325,11 +241,6 @@ void DaybookActivity::back() {
       confirmDelete_ = false;
       view_ = View::Lists;
       break;
-    case View::Web:
-      stopWeb();
-      loadAll();  // the page may have changed the files
-      view_ = View::Settings;
-      break;
     case View::Wallpapers:
       wallChoices_.clear();
       view_ = View::Settings;
@@ -343,11 +254,6 @@ void DaybookActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     back();
     return;
-  }
-  if (web_ && web_->running()) {
-    // Pumped from loop(): there are no background threads, and a blocking handler on the render path would make
-    // the screen look frozen.
-    for (int i = 0; i < 8 && web_->running(); ++i) web_->pump();
   }
   if (!hitsReady_.load()) return;
 
@@ -548,9 +454,10 @@ void DaybookActivity::route(const Act act, const int32_t value) {
       agenda_ = !agenda_;
       saveSettings();
       break;
-    case Act::OpenWeb:
-      startWeb();
-      return;
+    case Act::InstallPlugin:
+      message_ = daybook::plugin::install();
+      if (message_.empty()) message_ = "Installed. Open File Transfer, then Plugins in the web page.";
+      break;
     case Act::PickWallpaper:
       wallChoices_ = daybook::wallpaperChoices();
       page_ = 0;
@@ -1368,10 +1275,18 @@ void DaybookActivity::drawSettings() {
     row("Sleep wallpaper", wallpaper_.empty() ? std::string("Default (/sleep.bmp)") : wallpaper_.substr(slash + 1),
         Act::PickWallpaper);
   }
-  row("Page for phone or PC", "Open", Act::OpenWeb);
+  {
+    const daybook::plugin::State ps = daybook::plugin::state();
+    row("Web page for phone or PC (plugin)", ps == daybook::plugin::State::Missing ? "Install" : (ps == daybook::plugin::State::Outdated ? "Update" : "Installed"),
+        Act::InstallPlugin);
+  }
   y += 6;
-  const std::string note =
-      "The agenda shows when Sleep screen is set to Custom. Clock format follows System settings.";
+  std::string note = "The agenda shows when Sleep screen is set to Custom. Clock format follows System settings.";
+  if (!message_.empty()) {
+    note = message_;
+  } else if (daybook::plugin::state() != daybook::plugin::State::Missing && !daybook::plugin::pluginsEnabled()) {
+    note = "The web page needs Settings > Connectivity > Plugins turned on.";
+  }
   for (const std::string& line : renderer.wrappedText(kSmall, note.c_str(), sw - 2 * kM, 4)) {
     renderer.drawText(kSmall, kM, y, line.c_str(), true);
     y += renderer.getLineHeight(kSmall) + 2;
@@ -1462,9 +1377,6 @@ void DaybookActivity::render(RenderLock&&) {
       break;
     case View::ListForm:
       drawListForm();
-      break;
-    case View::Web:
-      drawWeb();
       break;
     case View::Wallpapers:
       drawWallpapers();
