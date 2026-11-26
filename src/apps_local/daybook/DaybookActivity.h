@@ -42,7 +42,7 @@ class DaybookActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
-  enum class View : uint8_t { Month, List, Day, Detail, Form, Settings, Todo, Lists, TaskForm, ListForm, Web };
+  enum class View : uint8_t { Month, List, Day, Detail, Form, Settings, Todo, Lists, TaskForm, ListForm, Web, Wallpapers };
   enum class Act : uint8_t {
     PrevMonth,
     NextMonth,
@@ -65,6 +65,7 @@ class DaybookActivity final : public Activity {
     SetFirstDay,
     ToggleWeek,
     PickWallpaper,
+    SetWallpaper,
     ToggleAgenda,
     OpenWeb,
     Back,
@@ -119,6 +120,7 @@ class DaybookActivity final : public Activity {
   std::string webUrl_;
   std::string webName_;
   bool agenda_ = false;    // draw today's agenda on the sleep screen
+  std::vector<std::string> wallChoices_;  // the .bmp files on the card, while the picker is open
   std::string wallpaper_;  // sleep wallpaper path; "" = the default
   bool listMode_ = false;  // the home screen: false = month grid, true = the upcoming list
   View detailFrom_ = View::Day;  // where Back from an event goes
@@ -152,9 +154,11 @@ class DaybookActivity final : public Activity {
   void startWeb();
   void stopWeb();
   void drawWeb();
+  void drawWallpapers();
   void refreshToday();
   void back();
   const Hit* hitAt(int x, int y) const;  // the top-most hit under a point, or null
+  static std::string weekdayName(daybook::Day day);  // "Monday"
   static bool isRowAct(Act act);          // a row or day cell: acts on the lift, not the press
   void route(Act act, int32_t value);
   void startDraft(int index);
@@ -194,7 +198,7 @@ class DaybookActivity final : public Activity {
   // Form rows, drawn in the value column that starts at rx. `base` is (field << 3); zones 1..4 are the arrows.
   void rowBox(int rx, int ry, int rw, int h, Act act, int base, const std::string& value);
   void rowCycler(int rx, int ry, int rw, int h, Act act, int base, const std::string& value);  // < value >
-  void rowStepper(int rx, int ry, int rw, int h, Act act, int base, const std::string& value,
+  void rowStepper(int rx, int ry, int rw, int h, Act act, int base, const std::string& value, const std::string& sub,
                   bool centerHit);  // << < value > >>
   std::string whenLabel(const daybook::Event& ev, const daybook::Occurrence& o, daybook::Day day) const;
   std::string repeatLabel(const daybook::Event& ev) const;
@@ -204,7 +208,8 @@ class DaybookActivity final : public Activity {
   void drawCheck(int x, int y, int size, bool checked, bool black) const;
   // One task: a box to tick, the title, and small text (a due or done date) on the right, or above the
   // title when `twoLine`. Tapping the box ticks it; tapping the rest opens the task.
-  void taskRow(int y, int h, size_t index, bool inverted, bool twoLine, const std::string& small);
+  void taskRow(int y, int h, size_t index, bool inverted, bool twoLine, const std::string& small,
+               const std::string& corner = "");
   std::string shortDate(daybook::Day day) const;
   std::string listName(uint32_t id) const;
   void drawTodo();

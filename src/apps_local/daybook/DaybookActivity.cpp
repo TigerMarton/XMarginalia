@@ -41,6 +41,7 @@ constexpr size_t kSettingsBytes = 512;
 constexpr int kM = 12;  // side margin
 
 constexpr const char* kDow[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+constexpr const char* kDowLong[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 constexpr const char* kMonthName[] = {"January", "February", "March",     "April",   "May",      "June",
                                       "July",    "August",   "September", "October", "November", "December"};
 constexpr const char* kMonthShort[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -83,7 +84,12 @@ bool writeText(const char* path, const std::string& text) {
 
 using daybook::addMonths;
 
+}  // namespace
+
+std::string DaybookActivity::weekdayName(const cal::Day day) { return kDowLong[cal::weekday(day)]; }
+
 // "Thu 26 Nov 2026", or "Thu 26 Nov" without the year.
+namespace {
 std::string dayTitle(const cal::Day day, const bool withYear = true) {
   const cal::Date d = cal::civilFromDays(day);
   char buf[40];
@@ -132,6 +138,7 @@ DaybookActivity::~DaybookActivity() = default;
 
 void DaybookActivity::onEnter() {
   Activity::onEnter();
+  toybox::ensureFonts(renderer);  // a wake lands here directly, not through the Shelf screen that registers them
   if (started_) {  // back from the keyboard screen: keep everything as it was
     changed();
     return;
@@ -321,6 +328,10 @@ void DaybookActivity::back() {
     case View::Web:
       stopWeb();
       loadAll();  // the page may have changed the files
+      view_ = View::Settings;
+      break;
+    case View::Wallpapers:
+      wallChoices_.clear();
       view_ = View::Settings;
       break;
   }
@@ -540,18 +551,19 @@ void DaybookActivity::route(const Act act, const int32_t value) {
     case Act::OpenWeb:
       startWeb();
       return;
-    case Act::PickWallpaper: {
-      // Default, then each .bmp found on the card, then back to default.
-      const std::vector<std::string> choices = daybook::wallpaperChoices();
-      size_t next = 0;  // 0 = default; i + 1 = choices[i]
-      for (size_t i = 0; i < choices.size(); i++) {
-        if (choices[i] == wallpaper_) next = i + 1;
-      }
-      next = next >= choices.size() ? 0 : next + 1;
-      wallpaper_ = next == 0 ? std::string() : choices[next - 1];
-      saveSettings();
+    case Act::PickWallpaper:
+      wallChoices_ = daybook::wallpaperChoices();
+      page_ = 0;
+      view_ = View::Wallpapers;
       break;
-    }
+    case Act::SetWallpaper:  // value 0 is the default, k is wallChoices_[k - 1]
+      wallpaper_ = value <= 0 || static_cast<size_t>(value) > wallChoices_.size()
+                       ? std::string()
+                       : wallChoices_[static_cast<size_t>(value - 1)];
+      saveSettings();
+      wallChoices_.clear();
+      view_ = View::Settings;
+      break;
     case Act::OpenTodo:  // the to-do acts are all handled by routeTodo(), above
     case Act::OpenLists:
     case Act::SelectList:
@@ -1042,9 +1054,10 @@ void DaybookActivity::drawList() {
     } else {
       const Entry& e = entries[row.entry];
       if (e.kind == 0) {  // a late task, inverted
-        taskRow(y, evH - 4, e.idx, true, false, "due " + shortDate(tasks_[e.idx].due));
+        taskRow(y, evH - 4, e.idx, true, false, "",
+                "due " + shortDate(tasks_[e.idx].due) + " - " + listName(tasks_[e.idx].list));
       } else if (e.kind == 2) {
-        taskRow(y, evH - 4, e.idx, false, false, "");
+        taskRow(y, evH - 4, e.idx, false, false, "", listName(tasks_[e.idx].list));
       } else {
         const cal::Occurrence& o = occ[e.idx];
         const cal::Event& ev = events_[o.event];
@@ -1195,14 +1208,24 @@ void DaybookActivity::rowCycler(const int rx, const int ry, const int rw, const 
 }
 
 void DaybookActivity::rowStepper(const int rx, const int ry, const int rw, const int h, const Act act,
-                                  const int base, const std::string& value, const bool centerHit) {
+                                  const int base, const std::string& value, const std::string& sub,
+                                  const bool centerHit) {
   const int bw = 46;
   if (centerHit) addHit(rx + 2 * bw + 8, ry, rw - 4 * bw - 16, h, act, base);
   button(rx, ry, bw, h, "<<", act, base | 1);
   button(rx + bw + 4, ry, bw, h, "<", act, base | 2);
   button(rx + rw - 2 * bw - 4, ry, bw, h, ">", act, base | 3);
   button(rx + rw - bw, ry, bw, h, ">>", act, base | 4);
-  textBox(kBody, rx + 2 * bw + 8, ry, rw - 4 * bw - 16, h, value, true);
+  const int vx = rx + 2 * bw + 8;
+  const int vw = rw - 4 * bw - 16;
+  const int lhS = renderer.getLineHeight(kSmall);
+  if (!sub.empty() && h >= renderer.getLineHeight(kBody) + lhS + 4) {  // the weekday, small, under the date
+    const int top = (h - renderer.getLineHeight(kBody) - lhS) / 2;
+    textBox(kBody, vx, ry + top - 2, vw, renderer.getLineHeight(kBody) + 2, value, true);
+    textBox(kSmall, vx, ry + top + renderer.getLineHeight(kBody), vw, lhS + 2, sub, true);
+  } else {
+    textBox(kBody, vx, ry, vw, h, value, true);
+  }
 }
 
 void DaybookActivity::drawForm() {
@@ -1249,6 +1272,7 @@ void DaybookActivity::drawForm() {
     textBox(kSmall, kM, ry, labelW, h, asTask && f == FStartDate ? "Due" : kLabel[f], false);
     const int base = static_cast<int>(f) << 3;
     std::string value;
+    std::string sub;  // the weekday under a date
     switch (f) {
       case FTitle:
         value = draft_.title.empty() ? "tap to type" : draft_.title;
@@ -1264,9 +1288,11 @@ void DaybookActivity::drawForm() {
         break;
       case FStartDate:
         value = cal::formatDate(draft_.start);
+        sub = kDowLong[cal::weekday(draft_.start)];
         break;
       case FEndDate:
         value = cal::formatDate(draft_.end);
+        sub = kDowLong[cal::weekday(draft_.end)];
         break;
       case FStartTime:
         value = cal::formatMinutes(draft_.startMin, twelveHour());
@@ -1282,6 +1308,7 @@ void DaybookActivity::drawForm() {
         break;
       case FUntil:
         value = draft_.hasUntil ? cal::formatDate(draft_.until) : "Never";
+        if (draft_.hasUntil) sub = kDowLong[cal::weekday(draft_.until)];
         break;
       case FTodo:
         value = draftTodo_ ? "Yes" : "No";
@@ -1311,7 +1338,7 @@ void DaybookActivity::drawForm() {
         break;
       }
       default:  // dates, times, every, until
-        rowStepper(rx, ry, rw, h, Act::Form, base, value, false);
+        rowStepper(rx, ry, rw, h, Act::Form, base, value, sub, false);
         break;
     }
   }
@@ -1321,36 +1348,76 @@ void DaybookActivity::drawForm() {
 void DaybookActivity::drawSettings() {
   const int sw = renderer.getScreenWidth();
   int y = drawHeader("Settings", "");
-  const int rowH = renderer.getLineHeight(kBold) + 30;
+  // Two lines a row, the setting's name small over its value, so neither is cut short by the other.
+  const int lhS = renderer.getLineHeight(kSmall);
+  const int lhB = renderer.getLineHeight(kBold);
+  const int rowH = lhS + lhB + 18;
   const auto row = [&](const char* label, const std::string& value, const Act act) {
     renderer.drawRoundedRect(kM, y, sw - 2 * kM, rowH, 2, 8, true);
-    textBox(kBody, kM, y, sw - 2 * kM - 140, rowH, label, false);
-    textBox(kBold, sw - kM - 140, y, 130, rowH, value, true);
+    textBox(kSmall, kM + 6, y + 4, sw - 2 * kM - 12, lhS + 2, label, false);
+    textBox(kBold, kM + 6, y + 6 + lhS, sw - 2 * kM - 12, lhB + 6, value, false);
     addHit(kM, y, sw - 2 * kM, rowH, act);
-    y += rowH + 10;
+    y += rowH + 8;
   };
   row("First day of week", firstDay_ == 1 ? "Monday" : (firstDay_ == 0 ? "Sunday" : "Saturday"), Act::SetFirstDay);
   row("Week numbers", weekNums_ ? "On" : "Off", Act::ToggleWeek);
-  row("Agenda on sleep screen", agenda_ ? "On" : "Off", Act::ToggleAgenda);
+  row("Agenda on the sleep screen", agenda_ ? "On" : "Off", Act::ToggleAgenda);
   {
     // The name after the last '/', so "/sleepscreen/forest.bmp" reads "forest.bmp".
     const size_t slash = wallpaper_.rfind('/');
-    row("Sleep wallpaper", wallpaper_.empty() ? std::string("Default") : wallpaper_.substr(slash + 1),
+    row("Sleep wallpaper", wallpaper_.empty() ? std::string("Default (/sleep.bmp)") : wallpaper_.substr(slash + 1),
         Act::PickWallpaper);
   }
   row("Page for phone or PC", "Open", Act::OpenWeb);
-  y += 10;
+  y += 6;
   const std::string note =
-      "Week numbers are ISO weeks. Time format follows the clock setting in System settings. Agenda and wallpaper: with "
-      "Sleep screen set to Custom, today's agenda is drawn over the wallpaper. Tap the wallpaper to cycle the .bmp "
-      "files on the card; Default is /sleep.bmp.";
-  for (const std::string& line : renderer.wrappedText(kSmall, note.c_str(), sw - 2 * kM, 6)) {
+      "The agenda shows when Sleep screen is set to Custom. Clock format follows System settings.";
+  for (const std::string& line : renderer.wrappedText(kSmall, note.c_str(), sw - 2 * kM, 4)) {
     renderer.drawText(kSmall, kM, y, line.c_str(), true);
     y += renderer.getLineHeight(kSmall) + 2;
   }
   if (!clockKnown_) {
-    y += 12;
+    y += 8;
     textBox(kBoldSmall, 0, y, sw, renderer.getLineHeight(kBoldSmall) + 8, "Clock not set: no 'today' shown", true);
+  }
+}
+
+// The picker behind "Sleep wallpaper": Default, then every .bmp the card holds, a page at a time.
+void DaybookActivity::drawWallpapers() {
+  const int sw = renderer.getScreenWidth();
+  const int sh = renderer.getScreenHeight();
+  int y = drawHeader("Sleep wallpaper", "");
+  const int bh = renderer.getLineHeight(kBold) + 26;
+  const int rowH = renderer.getLineHeight(kBold) + 22;
+  const int bottom = sh - bh - kM - 8;
+  const int total = static_cast<int>(wallChoices_.size()) + 1;  // + the default
+  const int perPage = std::max(1, (bottom - y) / (rowH + 6));
+  pages_ = std::max(1, (total + perPage - 1) / perPage);
+  page_ = std::clamp(page_, 0, pages_ - 1);
+  for (int i = 0; i < perPage; ++i) {
+    const int idx = page_ * perPage + i;
+    if (idx >= total) break;
+    const int ry = y + i * (rowH + 6);
+    const std::string path = idx == 0 ? std::string() : wallChoices_[static_cast<size_t>(idx - 1)];
+    const bool chosen = path == wallpaper_;
+    renderer.drawRoundedRect(kM, ry, sw - 2 * kM, rowH, 2, 8, true);
+    if (chosen) renderer.drawRoundedRect(kM + 3, ry + 3, sw - 2 * kM - 6, rowH - 6, 1, 6, true);
+    // "/sleepscreen/forest.bmp" shown as it is on the card, without the leading slash.
+    const std::string shown = idx == 0 ? std::string("Default (/sleep.bmp)") : path.substr(path[0] == '/' ? 1 : 0);
+    textBox(kBold, kM + 8, ry, sw - 2 * kM - 16, rowH, shown, false);
+    addHit(kM, ry, sw - 2 * kM, rowH, Act::SetWallpaper, idx);
+  }
+  if (wallChoices_.empty()) {
+    textBox(kSmall, 0, bottom - renderer.getLineHeight(kSmall) - 4, sw, renderer.getLineHeight(kSmall) + 4,
+            "No .bmp files found on the card", true);
+  }
+  if (pages_ > 1) {
+    const int pw = 120;
+    const int py = sh - bh - kM;
+    button(kM, py, pw, bh, "Prev", Act::PagePrev, 0);
+    button(sw - kM - pw, py, pw, bh, "Next", Act::PageNext, 0);
+    textBox(kBoldSmall, kM + pw, py, sw - 2 * kM - 2 * pw, bh, std::to_string(page_ + 1) + "/" + std::to_string(pages_),
+            true);
   }
 }
 
@@ -1398,6 +1465,9 @@ void DaybookActivity::render(RenderLock&&) {
       break;
     case View::Web:
       drawWeb();
+      break;
+    case View::Wallpapers:
+      drawWallpapers();
       break;
   }
   hitsReady_ = true;

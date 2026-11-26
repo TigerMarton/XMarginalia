@@ -275,7 +275,7 @@ void DaybookActivity::drawCheck(const int x, const int y, const int size, const 
 }
 
 void DaybookActivity::taskRow(const int y, const int h, const size_t index, const bool inverted, const bool twoLine,
-                               const std::string& small) {
+                               const std::string& small, const std::string& corner) {
   const cal::Task& t = tasks_[index];
   const int sw = renderer.getScreenWidth();
   const int w = sw - 2 * kM;
@@ -303,7 +303,10 @@ void DaybookActivity::taskRow(const int y, const int h, const size_t index, cons
     }
   } else {
     const int rw = small.empty() ? 0 : renderer.getTextWidth(kSmall, small.c_str()) + 12;
-    const std::string shown = renderer.truncatedText(kBold, title.c_str(), std::max(right - tx - rw, 16));
+    // The list this to-do belongs to: small, in the bottom right corner of the box, and the title yields to it.
+    const std::string cornerText = corner.empty() ? corner : renderer.truncatedText(kSmall, corner.c_str(), 200);
+    const int cw = cornerText.empty() ? 0 : renderer.getTextWidth(kSmall, cornerText.c_str()) + 8;
+    const std::string shown = renderer.truncatedText(kBold, title.c_str(), std::max(right - tx - std::max(rw, cw), 16));
     const int ty = y + (h - lhB) / 2;
     renderer.drawText(kBold, tx, ty, shown.c_str(), ink);
     if (t.done) {
@@ -311,6 +314,7 @@ void DaybookActivity::taskRow(const int y, const int h, const size_t index, cons
       renderer.drawLine(tx, sy, tx + renderer.getTextWidth(kBold, shown.c_str()), sy, 2, ink);
     }
     if (rw > 0) renderer.drawText(kSmall, right - rw + 6, y + (h - lhS) / 2, small.c_str(), ink);
+    if (cw > 0) renderer.drawText(kSmall, right - cw + 4, y + h - lhS - 1, cornerText.c_str(), ink);
   }
   addHit(kM, y, w, h, Act::EditTask, static_cast<int32_t>(index));
   addHit(kM, y, 56, h, Act::ToggleTask, static_cast<int32_t>(index));  // added last, so it wins its corner
@@ -449,7 +453,8 @@ void DaybookActivity::drawTaskForm() {
         rowCycler(rx, ry, rw, h, Act::TaskField, base, listName(taskDraft_.list));
         break;
       case TDue:  // tap the date itself to clear it, or to start one
-        rowStepper(rx, ry, rw, h, Act::TaskField, base, taskDraft_.hasDue ? cal::formatDate(taskDraft_.due) : "None", true);
+        rowStepper(rx, ry, rw, h, Act::TaskField, base, taskDraft_.hasDue ? cal::formatDate(taskDraft_.due) : "None",
+                   taskDraft_.hasDue ? weekdayName(taskDraft_.due) : "", true);
         break;
       case TDone:
         rowCycler(rx, ry, rw, h, Act::TaskField, base,
