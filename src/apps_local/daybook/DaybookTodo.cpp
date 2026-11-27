@@ -324,9 +324,12 @@ void DaybookActivity::taskRow(const int y, const int h, const size_t index, cons
   const std::string title = cal::foldForDisplay(t.title);
   const int lhB = renderer.getLineHeight(kBold);
   const int lhS = renderer.getLineHeight(kSmall);
+  // The list this to-do belongs to: small, in a little box in the bottom right corner, and the title yields to it.
+  const std::string cornerText = corner.empty() ? corner : renderer.truncatedText(kSmall, corner.c_str(), 200);
+  const int cw = cornerText.empty() ? 0 : renderer.getTextWidth(kSmall, cornerText.c_str()) + 8;
   if (twoLine) {
     textBox(kSmall, tx - 4, y + 4, right - tx, lhS + 4, small, false, ink);
-    const std::string shown = renderer.truncatedText(kBold, title.c_str(), right - tx);
+    const std::string shown = renderer.truncatedText(kBold, title.c_str(), right - tx - cw);
     const int ty = y + 6 + lhS;
     renderer.drawText(kBold, tx, ty, shown.c_str(), ink);
     if (t.done) {
@@ -335,10 +338,6 @@ void DaybookActivity::taskRow(const int y, const int h, const size_t index, cons
     }
   } else {
     const int rw = small.empty() ? 0 : renderer.getTextWidth(kSmall, small.c_str()) + 12;
-    // The list this to-do belongs to: small, in the bottom right corner of the
-    // box, and the title yields to it.
-    const std::string cornerText = corner.empty() ? corner : renderer.truncatedText(kSmall, corner.c_str(), 200);
-    const int cw = cornerText.empty() ? 0 : renderer.getTextWidth(kSmall, cornerText.c_str()) + 8;
     const std::string shown = renderer.truncatedText(kBold, title.c_str(), std::max(right - tx - std::max(rw, cw), 16));
     const int ty = y + (h - lhB) / 2;
     renderer.drawText(kBold, tx, ty, shown.c_str(), ink);
@@ -347,13 +346,13 @@ void DaybookActivity::taskRow(const int y, const int h, const size_t index, cons
       renderer.drawLine(tx, sy, tx + renderer.getTextWidth(kBold, shown.c_str()), sy, 2, ink);
     }
     if (rw > 0) renderer.drawText(kSmall, right - rw + 6, y + (h - lhS) / 2, small.c_str(), ink);
-    if (cw > 0) {  // a pill round the list's name says it can be touched
-      renderer.drawRoundedRect(right - cw, y + h - lhS - 7, cw, lhS + 4, 1, (lhS + 4) / 2, ink);
-      renderer.drawText(kSmall, right - cw + 4, y + h - lhS - 5, cornerText.c_str(), ink);
-    }
+  }
+  if (cw > 0) {  // a box with small round corners says the list's name can be touched
+    renderer.drawRoundedRect(right - cw, y + h - lhS - 7, cw, lhS + 4, 1, 4, ink);
+    renderer.drawText(kSmall, right - cw + 4, y + h - lhS - 5, cornerText.c_str(), ink);
   }
   addHit(kM, y, w, h, Act::EditTask, static_cast<int32_t>(index));
-  if (!twoLine && !corner.empty()) {  // a tap on the list's name goes to that list
+  if (!corner.empty()) {  // a tap on the list's name goes to that list
     const int cwHit =
         std::min(renderer.getTextWidth(kSmall, renderer.truncatedText(kSmall, corner.c_str(), 200).c_str()) + 8, 208);
     const int cx = right - cwHit - 4;

@@ -1370,9 +1370,7 @@ void DaybookActivity::drawDay() {
     const int ry = y + i * rowH;
     if (idx >= occ.size()) {  // a to-do due this day
       const cal::Task& t = tasks_[due[idx - occ.size()]];
-      std::string small = listName(t.list);
-      if (t.done) small += "   " + doneLabel(t);
-      taskRow(ry, rowH - 6, due[idx - occ.size()], false, true, small);
+      taskRow(ry, rowH - 6, due[idx - occ.size()], false, true, t.done ? doneLabel(t) : "To-do", listName(t.list));
       continue;
     }
     const cal::Event& ev = events_[occ[idx].event];

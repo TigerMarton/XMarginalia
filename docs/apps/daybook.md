@@ -47,7 +47,10 @@ Settings > *Web page for phone or PC (plugin)* writes a CrossPoint web UI plugin
 Plugins page. It reads and writes the same four files, so the page and the device agree. The script is one string in
 `DaybookPlugin.cpp`, about 32 KB of flash.
 
-## Not verified
+## Tested
 
-Not run on a device by whoever wrote this note: panel drawing, touch feel, and the sleep screen are checked on the host
-with a recording renderer, not on the e-ink panel.
+Tested by hand on an Xteink X4 Pro (Nov 2026): month, week, list and day views; the month and year picker; adding,
+editing, deleting and undoing events and to-dos; repeats; lists (up to 14); Find; Settings and every toggle; data
+kept across reboots and edited on a PC; the web plugin (install, update, add and tick from the page); the agenda
+on the sleep screen (sizes, top or bottom, tomorrow, empty day); Back gestures; page swipes. Core rules also run
+on a PC in `host-tests/daybook/run.sh`.
