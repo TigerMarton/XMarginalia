@@ -1,13 +1,11 @@
 #include "DaybookSleep.h"
 
+#include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <Logging.h>
 
-#include <FsHelpers.h>
-
 #include <algorithm>
-#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <string>
@@ -17,6 +15,7 @@
 #include "../ClockFloor.h"
 #include "../ui/ToyboxFonts.h"
 #include "DaybookCore.h"
+#include "DaybookDraw.h"
 
 namespace cal = daybook;
 
@@ -37,15 +36,11 @@ bool readText(const char* path, size_t maxBytes, std::string& out) {
   return Storage.exists(tmp.c_str()) && Storage.readFileToString(kTag, tmp, maxBytes, out);
 }
 
-// A white rectangle with rounded corners of radius r (the border is drawn over its edge afterwards).
-void fillRounded(GfxRenderer& renderer, const int x, const int y, const int w, const int h, const int r) {
-  renderer.fillRect(x, y + r, w, h - 2 * r, false);
-  for (int i = 0; i < r; ++i) {
-    const double dy = r - i - 0.5;
-    const int inset = r - static_cast<int>(std::sqrt(static_cast<double>(r) * r - dy * dy));
-    renderer.fillRect(x + inset, y + i, w - 2 * inset, 1, false);
-    renderer.fillRect(x + inset, y + h - 1 - i, w - 2 * inset, 1, false);
-  }
+// What the settings file says; the defaults when there is none.
+cal::Settings readSettings() {
+  std::string text;
+  readText(kSettingsPath, cal::kMaxSettingsBytes, text);
+  return cal::parseSettings(text);
 }
 
 }  // namespace
@@ -69,8 +64,9 @@ bool drawAgenda(GfxRenderer& renderer) {
   const bool twelve = SETTINGS.clockFormat == 1;
   cal::Agenda agenda = cal::buildAgenda(events, tasks, today, nowMin, twelve);
   cal::AgendaOptions opt;
-  opt.size = static_cast<cal::AgendaSize>(agendaSize());
-  opt.tomorrow = agendaTomorrow();
+  const cal::Settings settings = readSettings();
+  opt.size = static_cast<cal::AgendaSize>(settings.agendaSize);
+  opt.tomorrow = settings.tomorrow;
   opt.evening = nowMin >= cal::kEveningMinute;
   if (!opt.tomorrow) agenda.tomorrow.clear();
 
@@ -146,7 +142,9 @@ bool drawAgenda(GfxRenderer& renderer) {
     }
     return 0;
   };
-  const auto isTask = [](const cal::AgendaStyle s) { return s == cal::AgendaStyle::Task || s == cal::AgendaStyle::TomTask; };
+  const auto isTask = [](const cal::AgendaStyle s) {
+    return s == cal::AgendaStyle::Task || s == cal::AgendaStyle::TomTask;
+  };
   // An empty box before a to-do; events have nothing before them.
   const auto boxSide = [&](const int font) { return std::max(8, renderer.getLineHeight(font) * 7 / 10); };
   const auto indentOf = [&](const cal::AgendaStyle s) { return isTask(s) ? boxSide(fontOf(s)) + 6 : 0; };
@@ -173,11 +171,11 @@ bool drawAgenda(GfxRenderer& renderer) {
   for (const cal::AgendaLine& l : lines) used += heightOf(l.style);
   const int boxH = std::min(used + (large ? pad : 0), maxH);
   const int boxX = margin;
-  const int boxY = agendaBottom() ? H - margin - boxH : margin;
+  const int boxY = settings.agendaBottom ? H - margin - boxH : margin;
 
   // A white panel with small rounded corners and a black border.
   const int radius = 5;
-  fillRounded(renderer, boxX, boxY, boxW, boxH, radius + 1);
+  cal::fillRoundRect(renderer, boxX, boxY, boxW, boxH, radius + 1, false);
   renderer.drawRoundedRect(boxX, boxY, boxW, boxH, 2, radius, true);
 
   const int x = boxX + pad;
@@ -198,7 +196,7 @@ bool drawAgenda(GfxRenderer& renderer) {
       const int indent = indentOf(l.style);
       if (isTask(l.style)) {
         const int side = boxSide(font);
-        renderer.drawRect(x, y + (renderer.getLineHeight(font) - side) / 2 + 1, side, side, true);
+        renderer.drawRoundedRect(x, y + (renderer.getLineHeight(font) - side) / 2 + 1, side, side, 1, 2, true);
       }
       const std::string fit = renderer.truncatedText(font, l.text.c_str(), textW - indent);
       const bool bold = l.style == cal::AgendaStyle::Strong || l.style == cal::AgendaStyle::TomHead;
@@ -210,44 +208,11 @@ bool drawAgenda(GfxRenderer& renderer) {
     }
     y += h;
   }
-  LOG_INF(kTag, "sleep agenda: %u line(s), size %d, %u for tomorrow", static_cast<unsigned>(lines.size()), agendaSize(),
-          static_cast<unsigned>(agenda.tomorrow.size()));
+  LOG_INF(kTag, "sleep agenda: %u line(s), size %d, %u for tomorrow", static_cast<unsigned>(lines.size()),
+          settings.agendaSize, static_cast<unsigned>(agenda.tomorrow.size()));
   return true;
 }
 
-namespace {
-// The value after "key=" on its own line of the settings file, or "".
-std::string settingValue(const std::string& text, const char* key) {
-  const std::string tag = std::string(key) + "=";
-  size_t at = text.find(tag);
-  while (at != std::string::npos && at > 0 && text[at - 1] != '\n') at = text.find(tag, at + 1);
-  if (at == std::string::npos) return {};
-  const size_t end = text.find('\n', at);
-  return text.substr(at + tag.size(), end == std::string::npos ? std::string::npos : end - (at + tag.size()));
-}
-}  // namespace
-
-bool agendaEnabled() {
-  std::string text;
-  return readText(kSettingsPath, 512, text) && settingValue(text, "agenda") == "1";
-}
-
-bool agendaTomorrow() {
-  std::string text;
-  if (!readText(kSettingsPath, 512, text)) return true;  // on until it is switched off
-  return settingValue(text, "tomorrow") != "0";
-}
-
-int agendaSize() {
-  std::string text;
-  if (!readText(kSettingsPath, 512, text)) return 2;
-  const std::string v = settingValue(text, "size");
-  return v == "0" ? 0 : (v == "1" ? 1 : 2);  // Large unless told otherwise
-}
-
-bool agendaBottom() {
-  std::string text;
-  return readText(kSettingsPath, 512, text) && settingValue(text, "bottom") == "1";
-}
+bool agendaEnabled() { return readSettings().agenda; }
 
 }  // namespace daybook

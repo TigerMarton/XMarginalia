@@ -29,6 +29,8 @@ int daysInMonth(int y, int m);
 int isoWeek(Day day);  // 1..53, ISO 8601
 // The same day number `months` later (or earlier); the day clamps to the month end (31st -> 30th/28th).
 Day addMonths(Day day, int months);
+// The days the file format can hold: 1970-01-01 to 2200-12-31. A date outside them would not be read back.
+Day clampDay(Day day);
 
 enum class Repeat : uint8_t { None, Daily, Weekly, Monthly, Yearly };
 
@@ -195,24 +197,24 @@ Agenda buildAgenda(const std::vector<Event>& events, const std::vector<Task>& ta
                    bool twelveHour);
 
 enum class AgendaStyle : uint8_t {
-  Event,      // an event of today (nothing in front of it)
-  Task,       // an open to-do of today (drawn with an empty box in front of it)
-  Strong,     // "2 overdue"
-  Summary,    // Small size: "Due: 2   Today: 3   Tomorrow: 4"
-  Rule,       // a thin line between today and tomorrow
-  TomHead,    // "Tomorrow, Sat 28 Nov"
-  TomEvent,   // tomorrow's rows
+  Event,     // an event of today (nothing in front of it)
+  Task,      // an open to-do of today (drawn with an empty box in front of it)
+  Strong,    // "2 overdue"
+  Summary,   // Small size: "Due: 2   Today: 3   Tomorrow: 4"
+  Rule,      // a thin line between today and tomorrow
+  TomHead,   // "Tomorrow, Sat 28 Nov"
+  TomEvent,  // tomorrow's rows
   TomTask,
-  More,       // "+3 more"
+  More,  // "+3 more"
 };
 struct AgendaLine {
   AgendaStyle style = AgendaStyle::Event;
   std::string text;
 };
 struct AgendaMetrics {  // pixel heights of one line of each style, and the height there is to fill
-  int item = 0;      // Event and Task
+  int item = 0;         // Event and Task
   int strong = 0, summary = 0, rule = 0, tomHead = 0;
-  int tomItem = 0;   // TomEvent and TomTask
+  int tomItem = 0;  // TomEvent and TomTask
   int more = 0;
   int avail = 0;
 };
@@ -220,14 +222,34 @@ struct AgendaMetrics {  // pixel heights of one line of each style, and the heig
 enum class AgendaSize : uint8_t { Small, Normal, Large };
 struct AgendaOptions {
   AgendaSize size = AgendaSize::Large;
-  bool evening = false;   // late enough that tomorrow is what matters
-  bool tomorrow = true;   // show tomorrow at all
+  bool evening = false;  // late enough that tomorrow is what matters
+  bool tomorrow = true;  // show tomorrow at all
 };
 // The lines to draw, top to bottom, whose heights add up to at most `avail`. In the evening tomorrow gets
 // up to 8 rows and today at most 4; otherwise tomorrow gets up to 4 and today the rest of the room.
 // Small gives one Summary line.
-std::vector<AgendaLine> layoutAgenda(const Agenda& agenda, const AgendaMetrics& metrics, const std::string& tomorrowTitle,
-                                     const AgendaOptions& options);
+std::vector<AgendaLine> layoutAgenda(const Agenda& agenda, const AgendaMetrics& metrics,
+                                     const std::string& tomorrowTitle, const AgendaOptions& options);
 constexpr int kEveningMinute = 21 * 60;
+
+// --- Settings -----------------------------------------------------------------
+//
+// settings.txt: "key=value" lines. The app writes it; the sleep screen reads it. Unknown keys are ignored
+// and a missing one keeps its default, so an older file still works.
+
+constexpr size_t kMaxSettingsBytes = 512;
+
+struct Settings {
+  int firstDay = 1;  // 0 Sunday, 1 Monday, 6 Saturday
+  bool weekNumbers = true;
+  bool listHome = false;  // the home screen is the upcoming list...
+  bool weekHome = false;  // ...or else a week (true) or a month (false)
+  bool agenda = false;    // draw the agenda on the sleep screen
+  int agendaSize = 2;     // 0 Small, 1 Normal, 2 Large
+  bool tomorrow = true;   // with tomorrow under today
+  bool agendaBottom = false;
+};
+Settings parseSettings(const std::string& text);
+std::string serializeSettings(const Settings& settings);
 
 }  // namespace daybook

@@ -93,9 +93,9 @@ void DaybookActivity::taskTap(const int field, const int zone) {
         taskDraft_.hasDue = true;
         taskDraft_.due = today_;
       } else if (big) {
-        taskDraft_.due = std::max<cal::Day>(addMonths(taskDraft_.due, big), 0);
+        taskDraft_.due = cal::clampDay(addMonths(taskDraft_.due, big));
       } else {
-        taskDraft_.due = std::max<cal::Day>(taskDraft_.due + small, 0);
+        taskDraft_.due = cal::clampDay(taskDraft_.due + small);
       }
       break;
     case TDone:
@@ -294,7 +294,7 @@ void DaybookActivity::drawCheck(const int x, const int y, const int size, const 
 }
 
 void DaybookActivity::taskRow(const int y, const int h, const size_t index, const bool inverted, const bool twoLine,
-                               const std::string& small, const std::string& corner) {
+                              const std::string& small, const std::string& corner) {
   const cal::Task& t = tasks_[index];
   const int sw = renderer.getScreenWidth();
   const int w = sw - 2 * kM;
@@ -346,8 +346,10 @@ void DaybookActivity::drawTodo() {
   const cal::TaskList& list = lists_[curList_];
   const bool several = lists_.size() > 1;
   const int titleW = sw - 2 * kM - 70 - (several ? 60 : 0) - 8;
-  const int titleFont = renderer.getTextWidth(kBold, cal::foldForDisplay(list.name).c_str()) <= titleW ? kBold : kBoldSmall;
-  int y = drawHeader(list.name, several ? std::to_string(curList_ + 1) + "/" + std::to_string(lists_.size()) : std::string(),
+  const int titleFont =
+      renderer.getTextWidth(kBold, cal::foldForDisplay(list.name).c_str()) <= titleW ? kBold : kBoldSmall;
+  int y = drawHeader(list.name,
+                     several ? std::to_string(curList_ + 1) + "/" + std::to_string(lists_.size()) : std::string(),
                      titleFont);
   addHit(kM + 70, metrics.topPadding + 6, sw - 2 * kM - 70, renderer.getLineHeight(kBold) + 20, Act::OpenLists);
 
@@ -372,18 +374,13 @@ void DaybookActivity::drawTodo() {
     const cal::Task& t = tasks_[ix[idx]];
     const bool late = cal::isOverdue(t, today_);
     std::string small;
-    if (t.done) small = "done " + shortDate(t.doneOn);
-    else if (t.hasDue) small = (late ? "due " : "") + shortDate(t.due);
+    if (t.done)
+      small = "done " + shortDate(t.doneOn);
+    else if (t.hasDue)
+      small = (late ? "due " : "") + shortDate(t.due);
     taskRow(y + i * rowH, rowH - 4, ix[idx], late, false, small);
   }
-  if (pages_ > 1) {
-    const int py = barY - 6 - pagerH;
-    const int pw = 120;
-    button(kM, py, pw, pagerH, "Prev", Act::PagePrev, 0, false, kBoldSmall);
-    button(sw - kM - pw, py, pw, pagerH, "Next", Act::PageNext, 0, false, kBoldSmall);
-    textBox(kBoldSmall, kM + pw, py, sw - 2 * kM - 2 * pw, pagerH,
-            std::to_string(page_ + 1) + "/" + std::to_string(pages_), true);
-  }
+  if (pages_ > 1) drawPager(barY - 6 - pagerH, pagerH);
   if (!message_.empty()) textBox(kBoldSmall, 0, barY - pagerH - 12, sw, pagerH, message_, true);
 }
 
@@ -511,7 +508,8 @@ void DaybookActivity::drawListForm() {
     const Act acts[2] = {Act::CancelDelete, Act::ConfirmDelete};
     const int barY = bottomBar(2, labels, acts);
     const int lhQ = renderer.getLineHeight(kBoldSmall) + 2;
-    const std::string question = n == 0 ? "Delete this list?" : "Delete this list and its " + std::to_string(n) + " tasks?";
+    const std::string question =
+        n == 0 ? "Delete this list?" : "Delete this list and its " + std::to_string(n) + " tasks?";
     const auto lines = renderer.wrappedText(kBoldSmall, question.c_str(), sw - 2 * kM, 2);
     int qy = barY - 12 - static_cast<int>(lines.size()) * lhQ;
     for (const std::string& line : lines) {

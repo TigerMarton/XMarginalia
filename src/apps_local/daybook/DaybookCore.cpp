@@ -60,6 +60,11 @@ Day addMonths(const Day day, const int months) {
   return daysFromCivil(y, m, std::min(d.d, daysInMonth(y, m)));
 }
 
+Day clampDay(const Day day) {
+  static const Day last = daysFromCivil(2200, 12, 31);
+  return std::clamp<Day>(day, 0, last);
+}
+
 // --- Recurrence --------------------------------------------------------------
 
 void occurrencesIn(const std::vector<Event>& events, const Day from, const Day to, std::vector<Occurrence>& out) {
@@ -113,11 +118,12 @@ int sortKey(const Event& ev, const Occurrence& o, const Day day) {
 void occurrencesOn(const std::vector<Event>& events, const Day day, std::vector<Occurrence>& out) {
   out.clear();
   occurrencesIn(events, day, day, out);
-  std::stable_sort(out.begin(), out.end(), [&](const Occurrence& a, const Occurrence& b) {
+  std::sort(out.begin(), out.end(), [&](const Occurrence& a, const Occurrence& b) {
     const int ka = sortKey(events[a.event], a, day);
     const int kb = sortKey(events[b.event], b, day);
     if (ka != kb) return ka < kb;
-    return events[a.event].title < events[b.event].title;
+    if (events[a.event].title != events[b.event].title) return events[a.event].title < events[b.event].title;
+    return a.event != b.event ? a.event < b.event : a.start < b.start;  // a total order: same answer as a stable sort
   });
 }
 
@@ -200,10 +206,14 @@ std::string foldForDisplay(const std::string& in) {
     }
     for (int k = 1; k < len; ++k) cp = (cp << 6) | (static_cast<unsigned char>(in[i + static_cast<size_t>(k)]) & 0x3F);
     i += static_cast<size_t>(len);
-    if (cp == 0x150) cp = 0xD6;       // O double acute -> O umlaut
-    else if (cp == 0x151) cp = 0xF6;  // o double acute -> o umlaut
-    else if (cp == 0x170) cp = 0xDC;  // U double acute -> U umlaut
-    else if (cp == 0x171) cp = 0xFC;  // u double acute -> u umlaut
+    if (cp == 0x150)
+      cp = 0xD6;  // O double acute -> O umlaut
+    else if (cp == 0x151)
+      cp = 0xF6;  // o double acute -> o umlaut
+    else if (cp == 0x170)
+      cp = 0xDC;  // U double acute -> U umlaut
+    else if (cp == 0x171)
+      cp = 0xFC;  // u double acute -> u umlaut
     if (cp >= 0xA0 && cp <= 0xFF) {
       out += static_cast<char>(0xC0 | (cp >> 6));
       out += static_cast<char>(0x80 | (cp & 0x3F));
@@ -224,11 +234,16 @@ namespace {
 
 void putEscaped(std::string& out, const std::string& text) {
   for (const char c : text) {
-    if (c == '\t') out += "\\t";
-    else if (c == '\n') out += "\\n";
-    else if (c == '\r') continue;
-    else if (c == '\\') out += "\\\\";
-    else out += c;
+    if (c == '\t')
+      out += "\\t";
+    else if (c == '\n')
+      out += "\\n";
+    else if (c == '\r')
+      continue;
+    else if (c == '\\')
+      out += "\\\\";
+    else
+      out += c;
   }
 }
 
@@ -542,14 +557,22 @@ std::string searchKey(const std::string& text) {
       unsigned cp = 0xC0u + (b1 - 0x80u);
       if (cp >= 0xC0 && cp <= 0xDE && cp != 0xD7) cp += 0x20;  // lower case
       char base = 0;
-      if (cp >= 0xE0 && cp <= 0xE5) base = 'a';
-      else if (cp == 0xE7) base = 'c';
-      else if (cp >= 0xE8 && cp <= 0xEB) base = 'e';
-      else if (cp >= 0xEC && cp <= 0xEF) base = 'i';
-      else if (cp == 0xF1) base = 'n';
-      else if ((cp >= 0xF2 && cp <= 0xF6) || cp == 0xF8) base = 'o';
-      else if (cp >= 0xF9 && cp <= 0xFC) base = 'u';
-      else if (cp == 0xFD || cp == 0xFF) base = 'y';
+      if (cp >= 0xE0 && cp <= 0xE5)
+        base = 'a';
+      else if (cp == 0xE7)
+        base = 'c';
+      else if (cp >= 0xE8 && cp <= 0xEB)
+        base = 'e';
+      else if (cp >= 0xEC && cp <= 0xEF)
+        base = 'i';
+      else if (cp == 0xF1)
+        base = 'n';
+      else if ((cp >= 0xF2 && cp <= 0xF6) || cp == 0xF8)
+        base = 'o';
+      else if (cp >= 0xF9 && cp <= 0xFC)
+        base = 'u';
+      else if (cp == 0xFD || cp == 0xFF)
+        base = 'y';
       if (base != 0) {
         out += base;
       } else {
@@ -558,8 +581,10 @@ std::string searchKey(const std::string& text) {
       }
     } else if (b0 == 0xC5 && i + 1 < text.size()) {  // o and u with double acute
       const auto b1 = static_cast<uint8_t>(text[++i]);
-      if (b1 == 0x90 || b1 == 0x91) out += 'o';
-      else if (b1 == 0xB0 || b1 == 0xB1) out += 'u';
+      if (b1 == 0x90 || b1 == 0x91)
+        out += 'o';
+      else if (b1 == 0xB0 || b1 == 0xB1)
+        out += 'u';
       else {
         out += static_cast<char>(b0);
         out += static_cast<char>(b1);
@@ -597,6 +622,41 @@ bool matchesQuery(const Task& task, const std::string& key) {
   return hasAllWords(searchKey(task.title + " " + task.note), key);
 }
 
+// --- Settings -------------------------------------------------------------------
+
+namespace {
+// The number after "key=" at the start of a line, or `fallback`.
+int settingNumber(const std::string& text, const char* key, const int fallback) {
+  const std::string tag = std::string(key) + "=";
+  size_t at = text.find(tag);
+  while (at != std::string::npos && at > 0 && text[at - 1] != '\n') at = text.find(tag, at + 1);
+  return at == std::string::npos ? fallback : std::atoi(text.c_str() + at + tag.size());
+}
+}  // namespace
+
+Settings parseSettings(const std::string& text) {
+  Settings s;
+  const int first = settingNumber(text, "first", s.firstDay);
+  s.firstDay = (first == 0 || first == 6) ? first : 1;
+  s.weekNumbers = settingNumber(text, "weeks", s.weekNumbers) != 0;
+  s.listHome = settingNumber(text, "list", s.listHome) != 0;
+  s.weekHome = settingNumber(text, "grid", s.weekHome) != 0;
+  s.agenda = settingNumber(text, "agenda", s.agenda) == 1;
+  const int size = settingNumber(text, "size", s.agendaSize);
+  s.agendaSize = size == 0 ? 0 : (size == 1 ? 1 : 2);  // Large unless told otherwise
+  s.tomorrow = settingNumber(text, "tomorrow", 1) != 0;
+  s.agendaBottom = settingNumber(text, "bottom", 0) == 1;
+  return s;
+}
+
+std::string serializeSettings(const Settings& s) {
+  char buf[160];
+  std::snprintf(buf, sizeof buf, "first=%d\nweeks=%d\nlist=%d\ngrid=%d\nagenda=%d\nsize=%d\ntomorrow=%d\nbottom=%d\n",
+                s.firstDay, s.weekNumbers ? 1 : 0, s.listHome ? 1 : 0, s.weekHome ? 1 : 0, s.agenda ? 1 : 0,
+                s.agendaSize, s.tomorrow ? 1 : 0, s.agendaBottom ? 1 : 0);
+  return buf;
+}
+
 // --- Sleep-screen agenda --------------------------------------------------------
 
 bool eventOver(const Event& event, const Occurrence& occurrence, const Day today, const int nowMinutes) {
@@ -632,7 +692,7 @@ Agenda buildAgenda(const std::vector<Event>& events, const std::vector<Task>& ta
       a.pastEvents = true;
       continue;
     }
-    a.today.push_back({AgendaKind::Event, agendaWhen(e, o, today, twelveHour)  + " - " + foldForDisplay(e.title)});
+    a.today.push_back({AgendaKind::Event, agendaWhen(e, o, today, twelveHour) + " - " + foldForDisplay(e.title)});
   }
   std::vector<size_t> ix;
   tasksDueOn(tasks, today, ix);
@@ -645,7 +705,8 @@ Agenda buildAgenda(const std::vector<Event>& events, const std::vector<Task>& ta
   occurrencesOn(events, today + 1, occ);
   for (const Occurrence& o : occ) {
     const Event& e = events[o.event];
-    a.tomorrow.push_back({AgendaKind::Event, agendaWhen(e, o, today + 1, twelveHour)  + " - " + foldForDisplay(e.title)});
+    a.tomorrow.push_back(
+        {AgendaKind::Event, agendaWhen(e, o, today + 1, twelveHour) + " - " + foldForDisplay(e.title)});
   }
   tasksDueOn(tasks, today + 1, ix);
   for (const size_t i : ix) {

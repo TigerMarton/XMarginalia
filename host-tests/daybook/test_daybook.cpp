@@ -8,13 +8,13 @@
 using namespace daybook;
 
 static int g_fail = 0, g_checks = 0;
-#define CHECK(c)                                              \
-  do {                                                        \
-    ++g_checks;                                               \
-    if (!(c)) {                                               \
-      ++g_fail;                                               \
-      std::printf("FAIL line %d: %s\n", __LINE__, #c);        \
-    }                                                         \
+#define CHECK(c)                                       \
+  do {                                                 \
+    ++g_checks;                                        \
+    if (!(c)) {                                        \
+      ++g_fail;                                        \
+      std::printf("FAIL line %d: %s\n", __LINE__, #c); \
+    }                                                  \
   } while (0)
 
 static Day D(int y, int m, int d) { return daysFromCivil(y, m, d); }
@@ -39,10 +39,10 @@ static size_t countIn(const std::vector<Event>& v, Day from, Day to) {
 int main() {
   // --- dates ---
   CHECK(D(1970, 1, 1) == 0);
-  CHECK(weekday(D(1970, 1, 1)) == 4);   // Thursday
-  CHECK(weekday(D(2000, 1, 1)) == 6);   // Saturday
-  CHECK(weekday(D(2026, 11, 26)) == 4); // Thursday
-  CHECK(weekday(D(1969, 12, 31)) == 3); // Wednesday, before the epoch
+  CHECK(weekday(D(1970, 1, 1)) == 4);    // Thursday
+  CHECK(weekday(D(2000, 1, 1)) == 6);    // Saturday
+  CHECK(weekday(D(2026, 11, 26)) == 4);  // Thursday
+  CHECK(weekday(D(1969, 12, 31)) == 3);  // Wednesday, before the epoch
   for (Day d = -800; d < 30000; d += 7) {
     const Date c = civilFromDays(d);
     CHECK(daysFromCivil(c.y, c.m, c.d) == d);
@@ -98,7 +98,7 @@ int main() {
 
     // A repeating multi-day event shows on the tail of an earlier occurrence.
     std::vector<Event> span{ev("s", D(2026, 11, 1), D(2026, 11, 3), Repeat::Weekly)};
-    CHECK(countIn(span, D(2026, 11, 9), D(2026, 11, 9)) == 1);   // day 2 of the 8-10 run
+    CHECK(countIn(span, D(2026, 11, 9), D(2026, 11, 9)) == 1);  // day 2 of the 8-10 run
     CHECK(countIn(span, D(2026, 11, 11), D(2026, 11, 14)) == 0);
   }
 
@@ -176,13 +176,16 @@ int main() {
   CHECK(foldForDisplay("\xC5\x91") == "\xC3\xB6");       // o double acute -> o umlaut
   CHECK(foldForDisplay("\xC5\xB1") == "\xC3\xBC");       // u double acute -> u umlaut
   CHECK(foldForDisplay("\xC5\x90\xC5\xB0") == "\xC3\x96\xC3\x9C");
-  CHECK(foldForDisplay("x\xE2\x82\xAC") == "x?");        // euro sign has no glyph
+  CHECK(foldForDisplay("x\xE2\x82\xAC") == "x?");  // euro sign has no glyph
   CHECK(foldForDisplay("plain") == "plain");
-  CHECK(foldForDisplay("trunc\xC3") == "trunc?");        // torn UTF-8 does not read past the end
+  CHECK(foldForDisplay("trunc\xC3") == "trunc?");  // torn UTF-8 does not read past the end
 
   // --- storage round trip ---
   {
-    Event a = ev("T\xC5\x91" "k\xC3\xA9s\tmeet", D(2026, 11, 20), D(2026, 11, 24), Repeat::Monthly, 2);
+    Event a =
+        ev("T\xC5\x91"
+           "k\xC3\xA9s\tmeet",
+           D(2026, 11, 20), D(2026, 11, 24), Repeat::Monthly, 2);
     a.id = 7;
     a.allDay = false;
     a.startMin = 9 * 60 + 30;
@@ -215,7 +218,8 @@ int main() {
     CHECK(parse("garbage\nE\nE\tx\n\n\t\t\n", out) == 0);
     CHECK(parse("V1\nE\t1\tok\t2026-11-20\t2026-11-19\t1\t0\t0\t0\t1\t-\t\t\n", out) == 0);  // end before start
     CHECK(parse("V1\nE\t1\tok\t2026-02-30\t2026-02-30\t1\t0\t0\t0\t1\t-\t\t\n", out) == 0);  // not a date
-    CHECK(parse("V1\nE\t1\tgood\t2026-11-20\t2026-11-20\t1\t0\t0\t9\t0\t-\t\t\n", out) == 1);  // bad repeat/every healed
+    CHECK(parse("V1\nE\t1\tgood\t2026-11-20\t2026-11-20\t1\t0\t0\t9\t0\t-\t\t\n", out) ==
+          1);  // bad repeat/every healed
     CHECK(out[0].repeat == Repeat::None && out[0].every == 1);
     std::string huge = "V1\n";
     for (int i = 0; i < 1000; ++i) huge += "E\t1\tx\t2026-01-01\t2026-01-01\t1\t0\t0\t0\t1\t-\t\t\n";
@@ -289,9 +293,9 @@ int main() {
 
     uint64_t any = 0, open = 0;
     taskBusy(ts, D(2026, 11, 23), any, open);
-    CHECK((any >> 3) & 1 && (open >> 3) & 1);   // 26th
-    CHECK((any >> 4) & 1 && (open >> 4) & 1);   // 27th
-    CHECK(!((any >> 0) & 1));                   // 23rd: nothing
+    CHECK((any >> 3) & 1 && (open >> 3) & 1);  // 26th
+    CHECK((any >> 4) & 1 && (open >> 4) & 1);  // 27th
+    CHECK(!((any >> 0) & 1));                  // 23rd: nothing
     taskBusy(ts, D(2026, 11, 1), any, open);
     CHECK((any >> 9) & 1 && !((open >> 9) & 1));  // 10th: only a done task
     CHECK(!((any >> 41) & 1));
@@ -311,7 +315,7 @@ int main() {
     // damaged task files never crash and never keep junk
     CHECK(parseTasks("", back) == 0);
     CHECK(parseTasks("V1\nT\n T\t1\n\nT\t1\t1\t\t2026-11-01\t-\t-\t\n", back) == 0);  // empty title
-    CHECK(parseTasks("V1\nT\t1\t1\tx\t2026-02-30\t-\t-\t\n", back) == 0);               // bad created
+    CHECK(parseTasks("V1\nT\t1\t1\tx\t2026-02-30\t-\t-\t\n", back) == 0);             // bad created
     CHECK(parseTasks("V1\nT\t1\t1\tx\t2026-11-01\t2026-13-01\t-\t\n", back) == 1 && !back[0].hasDue);
     std::string many = "V1\n";
     for (int i = 0; i < 1200; ++i) many += "T\t1\t1\tx\t2026-01-01\t-\t-\t\n";
@@ -352,19 +356,19 @@ int main() {
   {  // capitalizeFirst: titles are fixed up on save, not while typing
     CHECK(capitalizeFirst("buy milk") == "Buy milk");
     CHECK(capitalizeFirst("Already") == "Already" && capitalizeFirst("").empty() && capitalizeFirst("1st") == "1st");
-    CHECK(capitalizeFirst("\xC3\xA9let") == "\xC3\x89let");        // é -> É
-    CHECK(capitalizeFirst("\xC5\x91ri") == "\xC5\x90ri");          // ő -> Ő
-    CHECK(capitalizeFirst("\xC5\xB1r") == "\xC5\xB0r");            // ű -> Ű
-    CHECK(capitalizeFirst("\xC3\xB7") == "\xC3\xB7");              // ÷ is not a letter
+    CHECK(capitalizeFirst("\xC3\xA9let") == "\xC3\x89let");  // é -> É
+    CHECK(capitalizeFirst("\xC5\x91ri") == "\xC5\x90ri");    // ő -> Ő
+    CHECK(capitalizeFirst("\xC5\xB1r") == "\xC5\xB0r");      // ű -> Ű
+    CHECK(capitalizeFirst("\xC3\xB7") == "\xC3\xB7");        // ÷ is not a letter
   }
 
   {  // search: case and accents ignored, every word must appear
     CHECK(searchKey("Dentist") == "dentist");
     CHECK(searchKey("\xC3\x81rv\xC3\xADzt\xC5\xB1r\xC5\x91") == "arvizturo");  // Arvizturo with accents
     CHECK(searchKey("\xC3\xA1rv\xC3\xADzt\xC5\xB1r\xC5\x91") == "arvizturo");
-    CHECK(searchKey("\xC3\x9F") == "\xC3\x9F");                                // a letter with no plain form stays
-    CHECK(searchKey("\xC3\x97") == "\xC3\x97");                                // the multiplication sign is untouched
-    CHECK(searchKey("\xC3\x96") == "o" && searchKey("\xC3\x9C") == "u");        // O and U with umlaut
+    CHECK(searchKey("\xC3\x9F") == "\xC3\x9F");                           // a letter with no plain form stays
+    CHECK(searchKey("\xC3\x97") == "\xC3\x97");                           // the multiplication sign is untouched
+    CHECK(searchKey("\xC3\x96") == "o" && searchKey("\xC3\x9C") == "u");  // O and U with umlaut
     Event e = ev("Call the Dentist", D(2026, 11, 27), D(2026, 11, 27));
     e.location = "Main street";
     e.note = "bring \xC3\x89va's card";
@@ -388,7 +392,7 @@ int main() {
     Event b = ev("Dentist", today, today);
     b.allDay = false;
     b.startMin = 14 * 60 + 30;
-    b.endMin = 0;  // no end time
+    b.endMin = 0;                            // no end time
     Event c = ev("Birthday", today, today);  // all day
     Event d = ev("Conference", today - 1, today + 1);
     Event f = ev("Trip home", today - 2, today);
@@ -405,12 +409,12 @@ int main() {
     occurrencesOn(evs, today, occ);
     CHECK(occ.size() == 5);
     CHECK(!eventOver(a, Occurrence{0, today, today}, today, 9 * 60 + 29));
-    CHECK(eventOver(a, Occurrence{0, today, today}, today, 9 * 60 + 30));   // over at its end minute
-    CHECK(!eventOver(b, Occurrence{0, today, today}, today, 15 * 60 + 29)); // no end: an hour
+    CHECK(eventOver(a, Occurrence{0, today, today}, today, 9 * 60 + 30));    // over at its end minute
+    CHECK(!eventOver(b, Occurrence{0, today, today}, today, 15 * 60 + 29));  // no end: an hour
     CHECK(eventOver(b, Occurrence{0, today, today}, today, 15 * 60 + 30));
-    CHECK(!eventOver(c, Occurrence{0, today, today}, today, 23 * 60 + 59)); // all day never over
-    CHECK(!eventOver(d, Occurrence{0, today - 1, today + 1}, today, 23 * 60));  // still running tomorrow
-    CHECK(!eventOver(f, Occurrence{0, today - 2, today}, today, 10 * 60 + 59)); // last day: until 11:00
+    CHECK(!eventOver(c, Occurrence{0, today, today}, today, 23 * 60 + 59));      // all day never over
+    CHECK(!eventOver(d, Occurrence{0, today - 1, today + 1}, today, 23 * 60));   // still running tomorrow
+    CHECK(!eventOver(f, Occurrence{0, today - 2, today}, today, 10 * 60 + 59));  // last day: until 11:00
     CHECK(eventOver(f, Occurrence{0, today - 2, today}, today, 11 * 60));
 
     std::vector<Task> ts;
@@ -475,13 +479,29 @@ int main() {
       int h = 0;
       for (const auto& l : v) {
         switch (l.style) {
-          case AgendaStyle::Event: case AgendaStyle::Task: h += m.item; break;
-          case AgendaStyle::Strong: h += m.strong; break;
-          case AgendaStyle::Summary: h += m.summary; break;
-          case AgendaStyle::Rule: h += m.rule; break;
-          case AgendaStyle::TomHead: h += m.tomHead; break;
-          case AgendaStyle::TomEvent: case AgendaStyle::TomTask: h += m.tomItem; break;
-          case AgendaStyle::More: h += m.more; break;
+          case AgendaStyle::Event:
+          case AgendaStyle::Task:
+            h += m.item;
+            break;
+          case AgendaStyle::Strong:
+            h += m.strong;
+            break;
+          case AgendaStyle::Summary:
+            h += m.summary;
+            break;
+          case AgendaStyle::Rule:
+            h += m.rule;
+            break;
+          case AgendaStyle::TomHead:
+            h += m.tomHead;
+            break;
+          case AgendaStyle::TomEvent:
+          case AgendaStyle::TomTask:
+            h += m.tomItem;
+            break;
+          case AgendaStyle::More:
+            h += m.more;
+            break;
         }
       }
       return h;
@@ -516,7 +536,8 @@ int main() {
     CHECK(l1[1].style == AgendaStyle::Event && l1[1].text == "09:00 - A");
     CHECK(l1[2].style == AgendaStyle::Task && l1[2].text == "T1");
     // tomorrow has 6 rows: 4 shown by day, then "+2 more"
-    for (int i = 0; i < 6; ++i) a.tomorrow.push_back({i == 5 ? AgendaKind::Task : AgendaKind::Event, "t" + std::to_string(i)});
+    for (int i = 0; i < 6; ++i)
+      a.tomorrow.push_back({i == 5 ? AgendaKind::Task : AgendaKind::Event, "t" + std::to_string(i)});
     auto l2 = layoutAgenda(a, m, "Tomorrow, Sat 28 Nov", opts(false));
     CHECK(count(l2, AgendaStyle::TomEvent) == 4 && count(l2, AgendaStyle::Rule) == 1);
     CHECK(l2.back().style == AgendaStyle::More && l2.back().text == "+2 more");
@@ -552,7 +573,8 @@ int main() {
     CHECK(s1.size() == 1 && s1[0].style == AgendaStyle::Summary && s1[0].text == "Due: 0   Today: 8   Tomorrow: 1");
     busy.overdue = 2;
     CHECK(layoutAgenda(busy, m, "Tomorrow", opts(false, false, AgendaSize::Small))[0].text == "Due: 2   Today: 8");
-    CHECK(layoutAgenda(Agenda{}, m, "Tomorrow", opts(false, true, AgendaSize::Small))[0].text == "Due: 0   Today: 0   Tomorrow: 0");
+    CHECK(layoutAgenda(Agenda{}, m, "Tomorrow", opts(false, true, AgendaSize::Small))[0].text ==
+          "Due: 0   Today: 0   Tomorrow: 0");
     // Normal lays out like Large (the fonts differ, the lines do not)
     CHECK(layoutAgenda(busy, m, "Tomorrow", opts(false, true, AgendaSize::Normal)).size() ==
           layoutAgenda(busy, m, "Tomorrow", opts(false)).size());
@@ -577,6 +599,50 @@ int main() {
         }
       }
     }
+  }
+
+  // --- settings file ---
+  {
+    Settings d = parseSettings("");  // no file: the defaults
+    CHECK(d.firstDay == 1 && d.weekNumbers && !d.listHome && !d.weekHome && !d.agenda && d.agendaSize == 2 &&
+          d.tomorrow && !d.agendaBottom);
+    Settings s;
+    s.firstDay = 0;
+    s.weekNumbers = false;
+    s.listHome = true;
+    s.weekHome = true;
+    s.agenda = true;
+    s.agendaSize = 1;
+    s.tomorrow = false;
+    s.agendaBottom = true;
+    const Settings r = parseSettings(serializeSettings(s));  // what is written is what is read
+    CHECK(r.firstDay == 0 && !r.weekNumbers && r.listHome && r.weekHome && r.agenda && r.agendaSize == 1 &&
+          !r.tomorrow && r.agendaBottom);
+    CHECK(serializeSettings(r) == serializeSettings(s));
+    CHECK(serializeSettings(s).size() < kMaxSettingsBytes);
+    CHECK(parseSettings("first=6\n").firstDay == 6);
+    CHECK(parseSettings("first=3\n").firstDay == 1);   // not a day the screen offers: Monday
+    CHECK(parseSettings("size=7\n").agendaSize == 2);  // junk reads as Large
+    CHECK(parseSettings("size=0\n").agendaSize == 0);
+    CHECK(parseSettings("agenda=1\n").agenda && !parseSettings("agenda=0\n").agenda &&
+          !parseSettings("agenda=2\n").agenda);
+    CHECK(parseSettings("xtomorrow=0\n").tomorrow);  // a key must start its line
+    CHECK(!parseSettings("agenda=1\ntomorrow=0\n").tomorrow && parseSettings("agenda=1\ntomorrow=0\n").agenda);
+    CHECK(parseSettings("bottom=1\nfuture=whatever\n").agendaBottom);  // unknown keys are ignored
+    CHECK(parseSettings("agenda=1\r\nsize=1\r\n").agendaSize == 1);    // CRLF from a PC editor
+  }
+  // --- the file holds 1970 .. 2200 ---
+  {
+    CHECK(clampDay(-5) == 0 && clampDay(0) == 0 && clampDay(100) == 100);
+    CHECK(clampDay(D(2200, 12, 31)) == D(2200, 12, 31) && clampDay(D(2200, 12, 31) + 1) == D(2200, 12, 31));
+    CHECK(clampDay(2000000000) == D(2200, 12, 31));
+    Event e;
+    e.id = 1;
+    e.title = "Edge";
+    e.start = e.end = clampDay(D(2300, 1, 1));
+    std::vector<Event> back;
+    parse(serialize({e}), back);
+    CHECK(back.size() == 1);  // an event at the clamp is read back, not dropped
   }
 
   std::printf("%d checks, %d failed\n", g_checks, g_fail);

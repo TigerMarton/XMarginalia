@@ -25,7 +25,7 @@
 
 #include "../../activities/Activity.h"
 #include "DaybookCore.h"
-
+#include "DaybookPlugin.h"
 
 class DaybookActivity final : public Activity {
  public:
@@ -78,6 +78,7 @@ class DaybookActivity final : public Activity {
     CycleSize,
     ToggleTomorrow,
     TogglePosition,
+    InstallPlugin,
     SetGrid,
     NewDayTask,
     Undo,
@@ -131,13 +132,14 @@ class DaybookActivity final : public Activity {
   daybook::Day selected_ = 0;
   int firstDay_ = 1;  // 0 Sunday, 1 Monday, 6 Saturday
   bool weekNums_ = true;
-  bool agenda_ = false;    // draw today's agenda on the sleep screen
-  int agendaSize_ = 2;     // ...how much it says: 0 Small (counts), 1 Normal, 2 Large
-  bool tomorrow_ = true;   // ...with tomorrow under it
+  bool agenda_ = false;        // draw today's agenda on the sleep screen
+  int agendaSize_ = 2;         // ...how much it says: 0 Small (counts), 1 Normal, 2 Large
+  bool tomorrow_ = true;       // ...with tomorrow under it
   bool agendaBottom_ = false;  // ...at the bottom of the screen
-  bool listMode_ = false;  // the home screen: the upcoming list...
-  bool weekMode_ = false;  // ...or else a week (true) or a month (false) grid
-  std::string search_;     // the Find screen's words
+  bool listMode_ = false;      // the home screen: the upcoming list...
+  bool weekMode_ = false;      // ...or else a week (true) or a month (false) grid
+  std::string search_;         // the Find screen's words
+  daybook::plugin::State pluginState_ = daybook::plugin::State::Missing;  // read when Settings opens
 
   // The last thing deleted, kept until something else is saved so the Undo bar can bring it back.
   struct Trash {
@@ -157,8 +159,8 @@ class DaybookActivity final : public Activity {
   int detailIndex_ = -1;
   bool confirmDelete_ = false;
   daybook::Event draft_;
-  int editIndex_ = -1;                        // -1 = a new event
-  bool draftTodo_ = false;                    // the event form's "To-Do" tick: save it as a task
+  int editIndex_ = -1;                       // -1 = a new event
+  bool draftTodo_ = false;                   // the event form's "To-Do" tick: save it as a task
   uint32_t draftList_ = daybook::kMainList;  // the list that task goes to
   daybook::Task taskDraft_;
   int taskEdit_ = -1;  // -1 = a new task
@@ -183,9 +185,9 @@ class DaybookActivity final : public Activity {
   daybook::Day weekStart() const;
   void refreshToday();
   void back();
-  const Hit* hitAt(int x, int y) const;  // the top-most hit under a point, or null
+  const Hit* hitAt(int x, int y) const;              // the top-most hit under a point, or null
   static std::string weekdayName(daybook::Day day);  // "Monday"
-  static bool isRowAct(Act act);          // a row or day cell: acts on the lift, not the press
+  static bool isRowAct(Act act);                     // a row or day cell: acts on the lift, not the press
   void route(Act act, int32_t value);
   void startDraft(int index);
   void formTap(int field, int zone);
@@ -210,6 +212,7 @@ class DaybookActivity final : public Activity {
               int fontId = -1);
   void textBox(int fontId, int x, int y, int w, int h, const std::string& text, bool center, bool black = true) const;
   int drawHeader(const std::string& title, const std::string& right, int fontId = -1);
+  void drawPager(int y, int h);
   int bottomBar(int count, const char* const* labels, const Act* acts);
   int homeBar();  // the two small button rows of the month and list screens; returns their top
   View home() const { return listMode_ ? View::List : (weekMode_ ? View::Week : View::Month); }
