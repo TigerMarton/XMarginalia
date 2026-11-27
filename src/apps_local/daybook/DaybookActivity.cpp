@@ -297,12 +297,15 @@ void DaybookActivity::loop() {
   // wait for the lift, because a swipe starts on top of them; the buttons there
   // act on the press.
   const bool swipeScreen = view_ == View::Month || view_ == View::Week || view_ == View::List || view_ == View::Day ||
-                           view_ == View::Todo || view_ == View::Search;
+                           view_ == View::Todo || view_ == View::Search || view_ == View::Lists ||
+                           view_ == View::Settings || view_ == View::Pick;
+  // Where a page swipe can start on a button, every button waits for the lift.
+  const bool allOnLift = view_ == View::Lists || view_ == View::Settings || view_ == View::Pick;
   int downX = 0;
   int downY = 0;
   if (mappedInput.wasScreenTouchPressed(downX, downY) && !HeaderBackTapTarget::contains(downX, downY)) {
     const Hit* hit = hitAt(downX, downY);
-    if (hit && !(swipeScreen && isRowAct(hit->act))) {
+    if (hit && !(swipeScreen && (allOnLift || isRowAct(hit->act)))) {
       mappedInput.swallowCurrentTouch();  // the lift must not tap what the press
                                           // just did
       route(hit->act, hit->value);
@@ -856,12 +859,12 @@ void DaybookActivity::drawPager(const int y, const int h) {
 // there is more than one page.
 void DaybookActivity::drawScrollbar(const int y0, const int y1) const {
   if (pages_ <= 1 || y1 - y0 < 48) return;
-  const int x = renderer.getScreenWidth() - 9;
+  const int x = renderer.getScreenWidth() - 11;
   const int track = y1 - y0;
   const int thumb = std::max(28, track / pages_);
   const int ty = y0 + (track - thumb) * std::clamp(page_, 0, pages_ - 1) / (pages_ - 1);
-  renderer.fillRect(x + 2, y0, 2, track, true);
-  renderer.fillRect(x, ty, 6, thumb, true);
+  renderer.fillRect(x + 3, y0, 3, track, true);
+  renderer.fillRect(x, ty, 9, thumb, true);
 }
 
 int DaybookActivity::bottomBar(const int count, const char* const* labels, const Act* acts) {

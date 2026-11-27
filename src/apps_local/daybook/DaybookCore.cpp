@@ -686,12 +686,17 @@ bool eventOver(const Event& event, const Occurrence& occurrence, const Day today
 
 namespace {
 std::string agendaWhen(const Event& e, const Occurrence& o, const Day day, const bool twelveHour) {
-  if (e.allDay) return "All day";
-  if (o.start < day) {  // a multi-day event already under way
+  if (e.allDay) return "";  // no time to give: the title stands alone
+  if (o.start < day) {      // a multi-day event already under way
     if (o.end == day && e.endMin > 0) return "until " + formatMinutes(e.endMin, twelveHour);
-    return "All day";
+    return "";
   }
   return formatMinutes(e.startMin, twelveHour);
+}
+
+std::string agendaEvent(const Event& e, const Occurrence& o, const Day day, const bool twelveHour) {
+  const std::string when = agendaWhen(e, o, day, twelveHour);
+  return (when.empty() ? "" : when + " - ") + foldForDisplay(e.title);
 }
 }  // namespace
 
@@ -706,7 +711,7 @@ Agenda buildAgenda(const std::vector<Event>& events, const std::vector<Task>& ta
       a.pastEvents = true;
       continue;
     }
-    a.today.push_back({AgendaKind::Event, agendaWhen(e, o, today, twelveHour) + " - " + foldForDisplay(e.title)});
+    a.today.push_back({AgendaKind::Event, agendaEvent(e, o, today, twelveHour)});
   }
   std::vector<size_t> ix;
   tasksDueOn(tasks, today, ix);
@@ -719,8 +724,7 @@ Agenda buildAgenda(const std::vector<Event>& events, const std::vector<Task>& ta
   occurrencesOn(events, today + 1, occ);
   for (const Occurrence& o : occ) {
     const Event& e = events[o.event];
-    a.tomorrow.push_back(
-        {AgendaKind::Event, agendaWhen(e, o, today + 1, twelveHour) + " - " + foldForDisplay(e.title)});
+    a.tomorrow.push_back({AgendaKind::Event, agendaEvent(e, o, today + 1, twelveHour)});
   }
   tasksDueOn(tasks, today + 1, ix);
   for (const size_t i : ix) {

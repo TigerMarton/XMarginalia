@@ -453,7 +453,7 @@ int main() {
     CHECK(morning.today.back().kind == AgendaKind::Task && morning.today.back().text == "Pay rent");
     CHECK(morning.tomorrow.size() == 4);  // Conference (still running) and Day
                                           // off (all day), Gym 07:00, Call mum
-    CHECK(morning.tomorrow[0].text == "All day - Conference" && morning.tomorrow[1].text == "All day - Day off");
+    CHECK(morning.tomorrow[0].text == "Conference" && morning.tomorrow[1].text == "Day off");
     CHECK(morning.tomorrow[2].text == "07:00 - Gym");
     CHECK(morning.tomorrow[3].kind == AgendaKind::Task && morning.tomorrow[3].text == "Call mum");
 
@@ -464,8 +464,8 @@ int main() {
       sawStandup |= it.text.find("Standup") != std::string::npos;
       sawDentist |= it.text.find("Dentist") != std::string::npos;
       sawTrip |= it.text.find("Trip home") != std::string::npos;
-      sawBirthday |= it.text == "All day - Birthday";
-      sawConf |= it.text == "All day - Conference";
+      sawBirthday |= it.text == "Birthday";
+      sawConf |= it.text == "Conference";
     }
     CHECK(!sawStandup && !sawDentist && !sawTrip && sawBirthday && sawConf);
     CHECK(afternoon.tomorrow[2].text == "7:00 AM - Gym");  // the clock format is honoured

@@ -69,7 +69,6 @@ bool drawAgenda(GfxRenderer& renderer) {
   opt.tomorrow = settings.tomorrow;
   opt.evening = nowMin >= cal::kEveningMinute;
   if (!opt.tomorrow) agenda.tomorrow.clear();
-  if (agenda.overdue == 0 && agenda.today.empty() && agenda.tomorrow.empty()) return false;  // nothing to say: no panel
 
   toybox::ensureFonts(renderer);
   const int W = renderer.getScreenWidth();

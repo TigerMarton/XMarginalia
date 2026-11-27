@@ -347,11 +347,16 @@ void DaybookActivity::taskRow(const int y, const int h, const size_t index, cons
       renderer.drawLine(tx, sy, tx + renderer.getTextWidth(kBold, shown.c_str()), sy, 2, ink);
     }
     if (rw > 0) renderer.drawText(kSmall, right - rw + 6, y + (h - lhS) / 2, small.c_str(), ink);
-    if (cw > 0) renderer.drawText(kSmall, right - cw + 4, y + h - lhS - 1, cornerText.c_str(), ink);
+    if (cw > 0) {  // a pill round the list's name says it can be touched
+      renderer.drawRoundedRect(right - cw, y + h - lhS - 7, cw, lhS + 4, 1, (lhS + 4) / 2, ink);
+      renderer.drawText(kSmall, right - cw + 4, y + h - lhS - 5, cornerText.c_str(), ink);
+    }
   }
   addHit(kM, y, w, h, Act::EditTask, static_cast<int32_t>(index));
   if (!twoLine && !corner.empty()) {  // a tap on the list's name goes to that list
-    const int cx = std::max(kM + w / 2, right - 200);
+    const int cwHit =
+        std::min(renderer.getTextWidth(kSmall, renderer.truncatedText(kSmall, corner.c_str(), 200).c_str()) + 8, 208);
+    const int cx = right - cwHit - 4;
     addHit(cx, y + h / 2, kM + w - cx, h - h / 2, Act::GoList, static_cast<int32_t>(cal::listIndex(lists_, t.list)));
   }
   addHit(kM, y, 56, h, Act::ToggleTask,
