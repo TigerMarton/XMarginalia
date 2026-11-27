@@ -17,6 +17,8 @@ bool drawAgenda(GfxRenderer& renderer);
 bool agendaEnabled();
 // "Today + tomorrow" (the default) rather than "Today only".
 bool agendaTomorrow();
+// How much the panel says: 0 Small (counts only), 1 Normal, 2 Large (the default).
+int agendaSize();
 // The panel sits at the bottom of the screen instead of the top.
 bool agendaBottom();
 

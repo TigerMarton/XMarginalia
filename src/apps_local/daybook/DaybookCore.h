@@ -195,27 +195,39 @@ Agenda buildAgenda(const std::vector<Event>& events, const std::vector<Task>& ta
                    bool twelveHour);
 
 enum class AgendaStyle : uint8_t {
-  Section,      // "EVENTS", "TO-DO TODAY": bold, small
-  Item,         // an event or to-do of today: body font
-  Strong,       // "2 overdue": bold body font
-  Rule,         // a thin line between today and tomorrow
-  TomSection,   // "TOMORROW  Sat 28 Nov": bold, small
-  TomItem,      // tomorrow's rows: small font
-  More,         // "+3 more": small font
+  Event,      // an event of today (nothing in front of it)
+  Task,       // an open to-do of today (drawn with an empty box in front of it)
+  Strong,     // "2 overdue"
+  Summary,    // Small size: "Due: 2   Today: 3   Tomorrow: 4"
+  Rule,       // a thin line between today and tomorrow
+  TomHead,    // "Tomorrow, Sat 28 Nov"
+  TomEvent,   // tomorrow's rows
+  TomTask,
+  More,       // "+3 more"
 };
 struct AgendaLine {
-  AgendaStyle style = AgendaStyle::Item;
+  AgendaStyle style = AgendaStyle::Event;
   std::string text;
 };
 struct AgendaMetrics {  // pixel heights of one line of each style, and the height there is to fill
-  int section = 0, item = 0, strong = 0, rule = 0, tomSection = 0, tomItem = 0, more = 0;
+  int item = 0;      // Event and Task
+  int strong = 0, summary = 0, rule = 0, tomHead = 0;
+  int tomItem = 0;   // TomEvent and TomTask
+  int more = 0;
   int avail = 0;
 };
-// The lines to draw, top to bottom, whose heights add up to at most `avail`. In the evening (late
-// enough that tomorrow is what matters) tomorrow gets up to 8 rows and today at most 4; otherwise
-// tomorrow gets up to 4 and today the rest of the room.
+// How much the sleep screen says. Large and Normal list the day; Small only counts.
+enum class AgendaSize : uint8_t { Small, Normal, Large };
+struct AgendaOptions {
+  AgendaSize size = AgendaSize::Large;
+  bool evening = false;   // late enough that tomorrow is what matters
+  bool tomorrow = true;   // show tomorrow at all
+};
+// The lines to draw, top to bottom, whose heights add up to at most `avail`. In the evening tomorrow gets
+// up to 8 rows and today at most 4; otherwise tomorrow gets up to 4 and today the rest of the room.
+// Small gives one Summary line.
 std::vector<AgendaLine> layoutAgenda(const Agenda& agenda, const AgendaMetrics& metrics, const std::string& tomorrowTitle,
-                                     bool evening);
+                                     const AgendaOptions& options);
 constexpr int kEveningMinute = 21 * 60;
 
 }  // namespace daybook

@@ -78,6 +78,7 @@ class DaybookActivity final : public Activity {
     PickWallpaper,
     SetWallpaper,
     ToggleAgenda,
+    CycleSize,
     ToggleTomorrow,
     TogglePosition,
     SetGrid,
@@ -134,6 +135,7 @@ class DaybookActivity final : public Activity {
   int firstDay_ = 1;  // 0 Sunday, 1 Monday, 6 Saturday
   bool weekNums_ = true;
   bool agenda_ = false;    // draw today's agenda on the sleep screen
+  int agendaSize_ = 2;     // ...how much it says: 0 Small (counts), 1 Normal, 2 Large
   bool tomorrow_ = true;   // ...with tomorrow under it
   bool agendaBottom_ = false;  // ...at the bottom of the screen
   std::vector<std::string> wallChoices_;  // the .bmp files on the card, while the picker is open

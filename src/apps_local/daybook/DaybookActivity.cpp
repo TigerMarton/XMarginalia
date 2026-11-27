@@ -168,6 +168,7 @@ void DaybookActivity::loadAll() {
     weekMode_ = settingInt(text, "grid", weekMode_ ? 1 : 0) != 0;
     wallpaper_ = daybook::wallpaperPath();
     agenda_ = daybook::agendaEnabled();
+    agendaSize_ = daybook::agendaSize();
     tomorrow_ = daybook::agendaTomorrow();
     agendaBottom_ = daybook::agendaBottom();
   }
@@ -186,9 +187,9 @@ bool DaybookActivity::saveLists() { return writeText(kListsPath, cal::serializeL
 void DaybookActivity::saveSettings() {
   char buf[320];
   std::snprintf(buf, sizeof buf,
-                "first=%d\nweeks=%d\nlist=%d\ngrid=%d\nagenda=%d\ntomorrow=%d\nbottom=%d\nwall=%s\n", firstDay_,
-                weekNums_ ? 1 : 0, listMode_ ? 1 : 0, weekMode_ ? 1 : 0, agenda_ ? 1 : 0, tomorrow_ ? 1 : 0,
-                agendaBottom_ ? 1 : 0, wallpaper_.c_str());
+                "first=%d\nweeks=%d\nlist=%d\ngrid=%d\nagenda=%d\nsize=%d\ntomorrow=%d\nbottom=%d\nwall=%s\n",
+                firstDay_, weekNums_ ? 1 : 0, listMode_ ? 1 : 0, weekMode_ ? 1 : 0, agenda_ ? 1 : 0, agendaSize_,
+                tomorrow_ ? 1 : 0, agendaBottom_ ? 1 : 0, wallpaper_.c_str());
   writeText(kSettingsPath, buf);
 }
 
@@ -515,6 +516,10 @@ void DaybookActivity::route(const Act act, const int32_t value) {
       break;
     case Act::ToggleAgenda:
       agenda_ = !agenda_;
+      saveSettings();
+      break;
+    case Act::CycleSize:
+      agendaSize_ = (agendaSize_ + 1) % 3;
       saveSettings();
       break;
     case Act::ToggleTomorrow:
@@ -1477,6 +1482,7 @@ void DaybookActivity::drawSettings() {
   row("First day of week", firstDay_ == 1 ? "Monday" : (firstDay_ == 0 ? "Sunday" : "Saturday"), Act::SetFirstDay);
   row("Week numbers", weekNums_ ? "On" : "Off", Act::ToggleWeek);
   row("Agenda on the sleep screen", agenda_ ? "On" : "Off", Act::ToggleAgenda);
+  row("Agenda size", agendaSize_ == 0 ? "Small (counts only)" : (agendaSize_ == 1 ? "Normal" : "Large"), Act::CycleSize);
   row("Agenda shows", tomorrow_ ? "Today + tomorrow" : "Today only", Act::ToggleTomorrow);
   row("Agenda position", agendaBottom_ ? "Bottom" : "Top", Act::TogglePosition);
   {

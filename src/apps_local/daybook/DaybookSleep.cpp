@@ -7,6 +7,7 @@
 #include <FsHelpers.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <string>
@@ -36,6 +37,17 @@ bool readText(const char* path, size_t maxBytes, std::string& out) {
   return Storage.exists(tmp.c_str()) && Storage.readFileToString(kTag, tmp, maxBytes, out);
 }
 
+// A white rectangle with rounded corners of radius r (the border is drawn over its edge afterwards).
+void fillRounded(GfxRenderer& renderer, const int x, const int y, const int w, const int h, const int r) {
+  renderer.fillRect(x, y + r, w, h - 2 * r, false);
+  for (int i = 0; i < r; ++i) {
+    const double dy = r - i - 0.5;
+    const int inset = r - static_cast<int>(std::sqrt(static_cast<double>(r) * r - dy * dy));
+    renderer.fillRect(x + inset, y + i, w - 2 * inset, 1, false);
+    renderer.fillRect(x + inset, y + h - 1 - i, w - 2 * inset, 1, false);
+  }
+}
+
 }  // namespace
 
 namespace daybook {
@@ -56,7 +68,11 @@ bool drawAgenda(GfxRenderer& renderer) {
 
   const bool twelve = SETTINGS.clockFormat == 1;
   cal::Agenda agenda = cal::buildAgenda(events, tasks, today, nowMin, twelve);
-  if (!agendaTomorrow()) agenda.tomorrow.clear();
+  cal::AgendaOptions opt;
+  opt.size = static_cast<cal::AgendaSize>(agendaSize());
+  opt.tomorrow = agendaTomorrow();
+  opt.evening = nowMin >= cal::kEveningMinute;
+  if (!opt.tomorrow) agenda.tomorrow.clear();
 
   toybox::ensureFonts(renderer);
   const int W = renderer.getScreenWidth();
@@ -65,20 +81,25 @@ bool drawAgenda(GfxRenderer& renderer) {
   const int fSmall = toybox::kReadingSmallFontId;
   const int fBold = toybox::kReadingBoldFontId;
   const int fBoldSmall = toybox::kReadingBoldSmallFontId;
+  const bool large = opt.size == cal::AgendaSize::Large;
 
+  // Large: the full-width panel in the reading font. Normal and Small: nothing bigger than the "as of"
+  // font (the bold headings are the next cut up), and the panel is only as wide as what it holds.
+  const int fDate = large ? fBold : fBoldSmall;
+  const int fItem = large ? fBody : fSmall;
+  const int fStrong = large ? fBold : fBoldSmall;
   const int margin = 16;
-  const int pad = 12;
-  const int boxW = W - 2 * margin;
-  const int textW = boxW - 2 * pad;
-  const int lhHead = renderer.getLineHeight(fBold) + 6;
+  const int pad = large ? 12 : (opt.size == cal::AgendaSize::Normal ? 10 : 8);
+  const int fullW = W - 2 * margin;
+  const int lhHead = renderer.getLineHeight(fDate) + (large ? 6 : 5);
   const int maxH = H - 2 * margin;
 
   cal::AgendaMetrics m;
-  m.section = renderer.getLineHeight(fBoldSmall) + 6;
-  m.item = renderer.getLineHeight(fBody) + 4;
-  m.strong = renderer.getLineHeight(fBold) + 4;
-  m.rule = 14;
-  m.tomSection = renderer.getLineHeight(fBoldSmall) + 4;
+  m.item = renderer.getLineHeight(fItem) + (large ? 4 : 3);
+  m.strong = renderer.getLineHeight(fStrong) + (large ? 4 : 3);
+  m.summary = renderer.getLineHeight(fSmall) + 3;
+  m.rule = large ? 14 : 10;
+  m.tomHead = renderer.getLineHeight(fBoldSmall) + (large ? 4 : 3);
   m.tomItem = renderer.getLineHeight(fSmall) + 3;
   m.more = renderer.getLineHeight(fSmall) + 3;
   m.avail = maxH - 2 * pad - lhHead;
@@ -86,78 +107,110 @@ bool drawAgenda(GfxRenderer& renderer) {
   const std::string tomorrowTitle = [&] {
     const cal::Date d = cal::civilFromDays(today + 1);
     char buf[48];
-    std::snprintf(buf, sizeof buf, "TOMORROW  %s %d %s", kDow[cal::weekday(today + 1)], d.d, kMon[d.m - 1]);
+    std::snprintf(buf, sizeof buf, "Tomorrow, %s %d %s", kDow[cal::weekday(today + 1)], d.d, kMon[d.m - 1]);
     return std::string(buf);
   }();
-  const std::vector<cal::AgendaLine> lines = cal::layoutAgenda(agenda, m, tomorrowTitle, nowMin >= cal::kEveningMinute);
+  const std::vector<cal::AgendaLine> lines = cal::layoutAgenda(agenda, m, tomorrowTitle, opt);
+
+  const auto fontOf = [&](const cal::AgendaStyle s) {
+    switch (s) {
+      case cal::AgendaStyle::Event:
+      case cal::AgendaStyle::Task:
+        return fItem;
+      case cal::AgendaStyle::Strong:
+        return fStrong;
+      case cal::AgendaStyle::TomHead:
+        return fBoldSmall;
+      default:
+        return fSmall;  // summary, tomorrow's rows, "+N more"
+    }
+  };
+  const auto heightOf = [&](const cal::AgendaStyle s) {
+    switch (s) {
+      case cal::AgendaStyle::Event:
+      case cal::AgendaStyle::Task:
+        return m.item;
+      case cal::AgendaStyle::Strong:
+        return m.strong;
+      case cal::AgendaStyle::Summary:
+        return m.summary;
+      case cal::AgendaStyle::Rule:
+        return m.rule;
+      case cal::AgendaStyle::TomHead:
+        return m.tomHead;
+      case cal::AgendaStyle::TomEvent:
+      case cal::AgendaStyle::TomTask:
+        return m.tomItem;
+      case cal::AgendaStyle::More:
+        return m.more;
+    }
+    return 0;
+  };
+  const auto isTask = [](const cal::AgendaStyle s) { return s == cal::AgendaStyle::Task || s == cal::AgendaStyle::TomTask; };
+  // An empty box before a to-do; events have nothing before them.
+  const auto boxSide = [&](const int font) { return std::max(8, renderer.getLineHeight(font) * 7 / 10); };
+  const auto indentOf = [&](const cal::AgendaStyle s) { return isTask(s) ? boxSide(fontOf(s)) + 6 : 0; };
+
+  const std::string stamp = "as of " + cal::formatMinutes(nowMin, twelve);
+  const std::string date = [&] {
+    char buf[40];
+    std::snprintf(buf, sizeof buf, "%s, %d %s", kDow[cal::weekday(today)], t.tm_mday, kMon[t.tm_mon]);
+    return std::string(buf);
+  }();
+
+  int boxW = fullW;
+  if (!large) {  // as wide as the widest line
+    int widest = renderer.getTextWidth(fDate, date.c_str()) + 16 + renderer.getTextWidth(fSmall, stamp.c_str());
+    for (const cal::AgendaLine& l : lines) {
+      if (l.style == cal::AgendaStyle::Rule) continue;
+      widest = std::max(widest, indentOf(l.style) + renderer.getTextWidth(fontOf(l.style), l.text.c_str()));
+    }
+    boxW = std::min(fullW, widest + 2 * pad);
+  }
+  const int textW = boxW - 2 * pad;
 
   int used = pad * 2 + lhHead;
-  for (const cal::AgendaLine& l : lines) {
-    switch (l.style) {
-      case cal::AgendaStyle::Section: used += m.section; break;
-      case cal::AgendaStyle::Item: used += m.item; break;
-      case cal::AgendaStyle::Strong: used += m.strong; break;
-      case cal::AgendaStyle::Rule: used += m.rule; break;
-      case cal::AgendaStyle::TomSection: used += m.tomSection; break;
-      case cal::AgendaStyle::TomItem: used += m.tomItem; break;
-      case cal::AgendaStyle::More: used += m.more; break;
-    }
-  }
-  const int boxH = std::min(used + pad, maxH);
+  for (const cal::AgendaLine& l : lines) used += heightOf(l.style);
+  const int boxH = std::min(used + (large ? pad : 0), maxH);
+  const int boxX = margin;
   const int boxY = agendaBottom() ? H - margin - boxH : margin;
 
-  renderer.fillRect(margin, boxY, boxW, boxH, false);
-  renderer.drawRect(margin, boxY, boxW, boxH, 2, true);
+  // A white panel with small rounded corners and a black border.
+  const int radius = 5;
+  fillRounded(renderer, boxX, boxY, boxW, boxH, radius + 1);
+  renderer.drawRoundedRect(boxX, boxY, boxW, boxH, 2, radius, true);
 
-  const int x = margin + pad;
+  const int x = boxX + pad;
   int y = boxY + pad;
-  char head[40];
-  std::snprintf(head, sizeof head, "%s, %d %s", kDow[cal::weekday(today)], t.tm_mday, kMon[t.tm_mon]);
-  renderer.drawText(fBold, x, y, head, true, EpdFontFamily::BOLD);
+  renderer.drawText(fDate, x, y, date.c_str(), true, EpdFontFamily::BOLD);
   // When it was drawn: the screen does not change while the device sleeps.
-  const std::string stamp = "as of " + cal::formatMinutes(nowMin, twelve);
-  renderer.drawText(fSmall, margin + boxW - pad - renderer.getTextWidth(fSmall, stamp.c_str()),
-                    y + renderer.getLineHeight(fBold) - renderer.getLineHeight(fSmall), stamp.c_str(), true);
+  renderer.drawText(fSmall, boxX + boxW - pad - renderer.getTextWidth(fSmall, stamp.c_str()),
+                    y + renderer.getLineHeight(fDate) - renderer.getLineHeight(fSmall), stamp.c_str(), true);
   y += lhHead;
-  renderer.drawLine(x, y - 3, margin + boxW - pad, y - 3, true);
+  renderer.drawLine(x, y - 3, boxX + boxW - pad, y - 3, true);
 
   for (const cal::AgendaLine& l : lines) {
-    switch (l.style) {
-      case cal::AgendaStyle::Section:
-        renderer.drawText(fBoldSmall, x, y, l.text.c_str(), true, EpdFontFamily::BOLD);
-        y += m.section;
-        break;
-      case cal::AgendaStyle::Item: {
-        const std::string fit = renderer.truncatedText(fBody, l.text.c_str(), textW);
-        renderer.drawText(fBody, x, y, fit.c_str(), true);
-        y += m.item;
-        break;
+    const int h = heightOf(l.style);
+    if (l.style == cal::AgendaStyle::Rule) {
+      renderer.drawLine(x, y + h / 2, boxX + boxW - pad, y + h / 2, true);
+    } else {
+      const int font = fontOf(l.style);
+      const int indent = indentOf(l.style);
+      if (isTask(l.style)) {
+        const int side = boxSide(font);
+        renderer.drawRect(x, y + (renderer.getLineHeight(font) - side) / 2 + 1, side, side, true);
       }
-      case cal::AgendaStyle::Strong:
-        renderer.drawText(fBold, x, y, l.text.c_str(), true, EpdFontFamily::BOLD);
-        y += m.strong;
-        break;
-      case cal::AgendaStyle::Rule:
-        renderer.drawLine(x, y + m.rule / 2, margin + boxW - pad, y + m.rule / 2, true);
-        y += m.rule;
-        break;
-      case cal::AgendaStyle::TomSection:
-        renderer.drawText(fBoldSmall, x, y, l.text.c_str(), true, EpdFontFamily::BOLD);
-        y += m.tomSection;
-        break;
-      case cal::AgendaStyle::TomItem: {
-        const std::string fit = renderer.truncatedText(fSmall, l.text.c_str(), textW);
-        renderer.drawText(fSmall, x, y, fit.c_str(), true);
-        y += m.tomItem;
-        break;
+      const std::string fit = renderer.truncatedText(font, l.text.c_str(), textW - indent);
+      const bool bold = l.style == cal::AgendaStyle::Strong || l.style == cal::AgendaStyle::TomHead;
+      if (bold) {
+        renderer.drawText(font, x, y, fit.c_str(), true, EpdFontFamily::BOLD);
+      } else {
+        renderer.drawText(font, x + indent, y, fit.c_str(), true);
       }
-      case cal::AgendaStyle::More:
-        renderer.drawText(fSmall, x, y, l.text.c_str(), true);
-        y += m.more;
-        break;
     }
+    y += h;
   }
-  LOG_INF(kTag, "sleep agenda: %u line(s), %u for tomorrow", static_cast<unsigned>(lines.size()),
+  LOG_INF(kTag, "sleep agenda: %u line(s), size %d, %u for tomorrow", static_cast<unsigned>(lines.size()), agendaSize(),
           static_cast<unsigned>(agenda.tomorrow.size()));
   return true;
 }
@@ -183,6 +236,13 @@ bool agendaTomorrow() {
   std::string text;
   if (!readText(kSettingsPath, 512, text)) return true;  // on until it is switched off
   return settingValue(text, "tomorrow") != "0";
+}
+
+int agendaSize() {
+  std::string text;
+  if (!readText(kSettingsPath, 512, text)) return 2;
+  const std::string v = settingValue(text, "size");
+  return v == "0" ? 0 : (v == "1" ? 1 : 2);  // Large unless told otherwise
 }
 
 bool agendaBottom() {
