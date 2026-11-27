@@ -838,10 +838,6 @@ static bool daybookAgenda = false;
 
 void SleepActivity::renderCustomSleepScreen() const {
   daybookAgenda = daybook::agendaEnabled();
-  if (daybookAgenda) {
-    const std::string picked = daybook::wallpaperPath();  // the wallpaper chosen in Daybook, if any
-    if (!picked.empty() && Storage.exists(picked.c_str()) && renderCustomSleepBmp(picked)) return;
-  }
   // /sleep.bmp on the SD root takes priority over custom sleep directories.
   if (renderCustomSleepBmp("/sleep.bmp")) return;
 
