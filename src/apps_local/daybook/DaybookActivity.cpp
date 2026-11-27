@@ -29,11 +29,12 @@ namespace cal = daybook;
 namespace {
 
 constexpr const char* kTag = "CAL";
-constexpr const char* kDir = "/.crosspoint/calendar";
-constexpr const char* kEventsPath = "/.crosspoint/calendar/events.txt";
-constexpr const char* kSettingsPath = "/.crosspoint/calendar/settings.txt";
-constexpr const char* kTasksPath = "/.crosspoint/calendar/tasks.txt";
-constexpr const char* kListsPath = "/.crosspoint/calendar/lists.txt";
+constexpr const char* kDir = "/.crosspoint/daybook";
+constexpr const char* kOldDir = "/.crosspoint/calendar";  // where versions before this kept the files
+constexpr const char* kEventsPath = "/.crosspoint/daybook/events.txt";
+constexpr const char* kSettingsPath = "/.crosspoint/daybook/settings.txt";
+constexpr const char* kTasksPath = "/.crosspoint/daybook/tasks.txt";
+constexpr const char* kListsPath = "/.crosspoint/daybook/lists.txt";
 constexpr int kM = 12;  // side margin
 
 constexpr const char* kDow[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
@@ -148,7 +149,21 @@ void DaybookActivity::onEnter() {
   requestUpdate();
 }
 
+// Files from the old folder are copied over once; the old ones are left where they are.
+static void migrateOldFiles() {
+  for (const char* name : {"events.txt", "tasks.txt", "lists.txt", "settings.txt"}) {
+    const std::string now = std::string(kDir) + "/" + name;
+    if (Storage.exists(now.c_str()) || Storage.exists((now + ".tmp").c_str())) continue;
+    std::string text;
+    const std::string old = std::string(kOldDir) + "/" + name;
+    if (Storage.exists(old.c_str()) && Storage.readFileToString(kTag, old.c_str(), cal::kMaxFileBytes, text)) {
+      writeText(now.c_str(), text);
+    }
+  }
+}
+
 void DaybookActivity::loadAll() {
+  migrateOldFiles();
   std::string text;
   events_.clear();
   if (readText(kEventsPath, cal::kMaxFileBytes, text)) cal::parse(text, events_);

@@ -22,18 +22,28 @@ namespace cal = daybook;
 namespace {
 
 constexpr const char* kTag = "DBK";
-constexpr const char* kEventsPath = "/.crosspoint/calendar/events.txt";
-constexpr const char* kTasksPath = "/.crosspoint/calendar/tasks.txt";
-constexpr const char* kSettingsPath = "/.crosspoint/calendar/settings.txt";
+constexpr const char* kEventsPath = "/.crosspoint/daybook/events.txt";
+constexpr const char* kTasksPath = "/.crosspoint/daybook/tasks.txt";
+constexpr const char* kSettingsPath = "/.crosspoint/daybook/settings.txt";
 
 constexpr const char* kDow[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 constexpr const char* kMon[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
+bool readOne(const std::string& path, size_t maxBytes, std::string& out) {
+  if (Storage.exists(path.c_str())) return Storage.readFileToString(kTag, path.c_str(), maxBytes, out);
+  const std::string tmp = path + ".tmp";
+  return Storage.exists(tmp.c_str()) && Storage.readFileToString(kTag, tmp.c_str(), maxBytes, out);
+}
+
+// The Daybook folder; the old "calendar" one when the app has not been opened since the move.
 bool readText(const char* path, size_t maxBytes, std::string& out) {
   out.clear();
-  if (Storage.exists(path)) return Storage.readFileToString(kTag, path, maxBytes, out);
-  const std::string tmp = std::string(path) + ".tmp";
-  return Storage.exists(tmp.c_str()) && Storage.readFileToString(kTag, tmp, maxBytes, out);
+  if (readOne(path, maxBytes, out)) return true;
+  std::string old = path;
+  const size_t at = old.find("/daybook/");
+  if (at == std::string::npos) return false;
+  old.replace(at, 9, "/calendar/");
+  return readOne(old, maxBytes, out);
 }
 
 // What the settings file says; the defaults when there is none.

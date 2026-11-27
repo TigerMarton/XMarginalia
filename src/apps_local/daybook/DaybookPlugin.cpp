@@ -13,7 +13,7 @@ namespace {
 
 constexpr const char* kTag = "DBP";
 constexpr const char* kName = "daybook";
-constexpr const char* kVersion = "1.1.0";  // bump when the script changes: Settings then offers "Update"
+constexpr const char* kVersion = "1.1.1";  // bump when the script changes: Settings then offers "Update"
 
 const char kReadme[] =
     "Daybook\n"
@@ -30,10 +30,10 @@ const char kReadme[] =
 // marker.
 const char kScript[] =
     R"JS(// Daybook for the CrossPoint web UI. Reads and writes the same files the Daybook app keeps on the card
-// (/.crosspoint/calendar/), so the device and this page always show one set of data.
+// (/.crosspoint/daybook/), so the device and this page always show one set of data.
 CrossPoint.registerPlugin(async (container, api) => {
   'use strict';
-  const DIR = '/.crosspoint/calendar/';
+  const DIR = '/.crosspoint/daybook/';
   const FILES = { e: DIR + 'events.txt', t: DIR + 'tasks.txt', l: DIR + 'lists.txt', s: DIR + 'settings.txt' };
   const LIM = { events: 400, tasks: 500, lists: 14, evFile: 96 * 1024, taskFile: 160 * 1024, title: 60, place: 60, note: 240, list: 30 };
   const MAIN = 1;
