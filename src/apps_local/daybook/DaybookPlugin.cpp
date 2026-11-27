@@ -1,4 +1,5 @@
-// See DaybookPlugin.h. The script below is the page itself; DaybookActivity's Settings writes it to the card.
+// See DaybookPlugin.h. The script below is the page itself; DaybookActivity's
+// Settings writes it to the card.
 #include "DaybookPlugin.h"
 
 #include <HalStorage.h>
@@ -12,18 +13,21 @@ namespace {
 
 constexpr const char* kTag = "DBP";
 constexpr const char* kName = "daybook";
-constexpr const char* kVersion = "1.0.0";  // bump when the script changes: Settings then offers "Update"
+constexpr const char* kVersion = "1.1.0";  // bump when the script changes: Settings then offers "Update"
 
 const char kReadme[] =
     "Daybook\n"
     "\n"
-    "Your calendar and to-dos in the web page. It reads and writes the same files as the Daybook app, so\n"
+    "Your calendar and to-dos in the web page. It reads and "
+    "writes the same files as the Daybook app, so\n"
     "both always show the same things.\n"
     "\n"
-    "To use it: open File Transfer on the device, then the Plugins page in the web UI on your phone or\n"
+    "To use it: open File Transfer on the device, then the "
+    "Plugins page in the web UI on your phone or\n"
     "PC. Leave the Daybook app closed while you edit.\n";
 
-// The script. Raw literal: no escaping, and it never contains the closing marker.
+// The script. Raw literal: no escaping, and it never contains the closing
+// marker.
 const char kScript[] =
     R"JS(// Daybook for the CrossPoint web UI. Reads and writes the same files the Daybook app keeps on the card
 // (/.crosspoint/calendar/), so the device and this page always show one set of data.
@@ -31,7 +35,7 @@ CrossPoint.registerPlugin(async (container, api) => {
   'use strict';
   const DIR = '/.crosspoint/calendar/';
   const FILES = { e: DIR + 'events.txt', t: DIR + 'tasks.txt', l: DIR + 'lists.txt', s: DIR + 'settings.txt' };
-  const LIM = { events: 400, tasks: 500, lists: 8, evFile: 96 * 1024, taskFile: 160 * 1024, title: 60, place: 60, note: 240, list: 30 };
+  const LIM = { events: 400, tasks: 500, lists: 14, evFile: 96 * 1024, taskFile: 160 * 1024, title: 60, place: 60, note: 240, list: 30 };
   const MAIN = 1;
   const enc = new TextEncoder();
 
@@ -56,6 +60,7 @@ CrossPoint.registerPlugin(async (container, api) => {
   const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const DOWL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const nowMin = () => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); };
   const hm = (m) => pad(Math.floor(m / 60)) + ':' + pad(m % 60);
   const parseHm = (s) => { const p = /^(\d{1,2}):(\d{2})/.exec(s || ''); return p ? Math.min(+p[1] * 60 + +p[2], 1439) : 0; };
   const nice = (day) => { const c = civil(day); return DOW[wd(day)] + ' ' + c.d + ' ' + MON[c.m - 1].slice(0, 3); };
@@ -116,11 +121,12 @@ CrossPoint.registerPlugin(async (container, api) => {
       t.doneOn = f[6] !== '-' ? parseDay(f[6]) : null;
       t.done = t.doneOn != null;
       t.note = cut(unesc(f[7]), LIM.note);
+      t.doneMin = t.done && /^\d{1,4}$/.test(f[8] || '') && +f[8] < 1440 ? +f[8] : null;
       out.push(t);
     }
     return out;
   };
-  const putTasks = (v) => 'V1\n' + v.map((t) => ['T', t.id, t.list, esc(t.title), iso(t.created), t.due != null ? iso(t.due) : '-', t.done ? iso(t.doneOn) : '-', esc(t.note)].join('\t') + '\n').join('');
+  const putTasks = (v) => 'V1\n' + v.map((t) => ['T', t.id, t.list, esc(t.title), iso(t.created), t.due != null ? iso(t.due) : '-', t.done ? iso(t.doneOn) : '-', esc(t.note)].concat(t.done && t.doneMin != null ? [t.doneMin] : []).join('\t') + '\n').join('');
   const parseLists = (text) => {
     const out = [];
     for (const line of text.split('\n')) {
@@ -226,16 +232,16 @@ CrossPoint.registerPlugin(async (container, api) => {
       const t = { title: cap(clip(v.title, LIM.title).trim()), note: clip(v.note, LIM.note), list: d.lists.some((l) => l.id === v.list) ? v.list : MAIN, due: v.due != null ? v.due : null };
       if (!t.title) throw new Error('Give it a title');
       const at = v.id ? d.tasks.findIndex((x) => x.id === v.id) : -1;
-      if (at >= 0) { const o = d.tasks[at]; Object.assign(t, { id: o.id, created: o.created, done: o.done, doneOn: o.doneOn }); d.tasks[at] = t; } else {
+      if (at >= 0) { const o = d.tasks[at]; Object.assign(t, { id: o.id, created: o.created, done: o.done, doneOn: o.doneOn, doneMin: o.doneMin }); d.tasks[at] = t; } else {
         if (d.tasks.length >= LIM.tasks) throw new Error('The to-do list is full');
-        Object.assign(t, { id: nextId(d.tasks), created: today, done: false, doneOn: null }); d.tasks.push(t);
+        Object.assign(t, { id: nextId(d.tasks), created: today, done: false, doneOn: null, doneMin: null }); d.tasks.push(t);
       }
       await wr(FILES.t, putTasks(d.tasks));
     }),
     taskToggle: (id) => op(async () => {
       const d = { tasks: parseTasks(await rd(FILES.t)) }, t = d.tasks.find((x) => x.id === id);
       if (!t) throw new Error('That task is already gone');
-      t.done = !t.done; t.doneOn = t.done ? today : null;
+      t.done = !t.done; t.doneOn = t.done ? today : null; t.doneMin = t.done ? nowMin() : null;
       await wr(FILES.t, putTasks(d.tasks));
     }),
     taskDelete: (id) => op(async () => {
@@ -342,11 +348,11 @@ CrossPoint.registerPlugin(async (container, api) => {
   const evText = (o, day) => (o.ev.allDay || day !== o.start ? '' : hm(o.ev.startMin) + ' ') + o.ev.title;
   const evSub = (o) => nice(o.start) + (o.ev.allDay ? '' : ' \u00b7 ' + hm(o.ev.startMin) + (o.ev.endMin ? '\u2013' + hm(o.ev.endMin) : '')) + (o.ev.end > o.ev.start ? ' \u2192 ' + nice(o.end) : '') + (o.ev.repeat ? ' \u00b7 repeats' : '') + (o.ev.place ? ' \u00b7 ' + o.ev.place : '');
   const listName = (id) => (S.d.lists.find((l) => l.id === id) || { name: '' }).name;
-  const taskSub = (t, withList) => [t.due != null ? 'due ' + nice(t.due) : '', t.done && t.doneOn != null ? 'done ' + nice(t.doneOn) : '', withList ? listName(t.list) : '', t.note].filter(Boolean).join(' \u00b7 ');
+  const taskSub = (t, withList) => [t.due != null ? 'due ' + nice(t.due) : '', t.done && t.doneOn != null ? 'done ' + nice(t.doneOn) + (t.doneMin != null ? ' ' + hm(t.doneMin) : '') : '', withList ? listName(t.list) : '', t.note].filter(Boolean).join(' \u00b7 ');
   const isOver = (t) => !t.done && t.due != null && t.due < today;
 
   const taskRow = (t, withList) => h('div', { class: 'row' + (t.done ? ' done' : isOver(t) ? ' over' : ''), onclick: () => taskDialog(t) },
-    h('input', { type: 'checkbox', checked: t.done, onclick: (e) => e.stopPropagation(), onchange: () => { t.done = !t.done; t.doneOn = t.done ? today : null; draw(); run(ops.taskToggle(t.id)); } }),
+    h('input', { type: 'checkbox', checked: t.done, onclick: (e) => e.stopPropagation(), onchange: () => { run(ops.taskToggle(t.id)); } }),
     h('div', { class: 'grow' }, h('div', { class: 'tt' }, t.title), h('div', { class: 'sub' }, taskSub(t, withList))));
   const evRow = (o) => h('div', { class: 'row', onclick: () => eventDialog(o.ev) },
     h('div', { class: 'tag' }, o.ev.allDay ? 'all day' : hm(o.ev.startMin)),
@@ -410,6 +416,7 @@ CrossPoint.registerPlugin(async (container, api) => {
     const done = tasks.filter((t) => t.done).length;
     tasks.sort((a, b) => (a.done - b.done) || (a.done ? (b.doneOn || 0) - (a.doneOn || 0) : (a.due == null) - (b.due == null) || (a.due || 0) - (b.due || 0)));
     const quick = h('input', { type: 'text', maxlength: 60, placeholder: 'Add a to-do and press Enter', onkeydown: (e) => { if (e.key === 'Enter' && quick.value.trim()) { const v = quick.value; quick.value = ''; run(ops.taskSave({ title: v, list: S.cur, note: '', due: null })); } } });
+    const more = () => { const v = quick.value; quick.value = ''; taskDialog(null, null, v); };
     app.append(
       h('div', { class: 'tabs' }, d.lists.map((l) => h('button', { class: l.id === S.cur ? 'on' : '', onclick: () => { S.cur = l.id; draw(); } }, l.name + ' (' + open(l.id) + ')')),
         h('button', { onclick: () => { const n = prompt('New list name'); if (n) run(ops.listAdd(n).then((id) => { S.cur = id; })); } }, '+')),
@@ -419,7 +426,7 @@ CrossPoint.registerPlugin(async (container, api) => {
           S.cur !== MAIN && h('button', { class: 'bad', onclick: () => { if (confirm('Delete this list and its to-dos?')) { const id = S.cur; S.cur = MAIN; run(ops.listDelete(id)); } } }, 'Delete')),
         tasks.length > 0 && h('div', { class: 'sub' }, done + ' of ' + tasks.length + ' done'),
         tasks.length > 0 && h('div', { class: 'prog' }, h('i', { style: 'width:' + Math.round((100 * done) / tasks.length) + '%' })),
-        h('div', { class: 'quick' }, quick, h('button', { class: 'pri', onclick: () => taskDialog(null, null) }, 'More\u2026')),
+        h('div', { class: 'quick' }, quick, h('button', { class: 'pri', onclick: more }, 'More\u2026')),
         tasks.map((t) => taskRow(t, false)), !tasks.length && h('div', { class: 'sub' }, 'No to-dos yet.')));
   };
 
@@ -469,8 +476,8 @@ CrossPoint.registerPlugin(async (container, api) => {
       ev && h('button', { class: 'bad', onclick: () => { if (confirm('Delete this event?')) { d.close(); run(ops.eventDelete(ev.id), 'Deleted'); } } }, 'Delete')]);
     title.focus();
   };
-  const taskDialog = (t, day) => {
-    const title = h('input', { type: 'text', maxlength: 60, value: t ? t.title : '' });
+  const taskDialog = (t, day, pre) => {
+    const title = h('input', { type: 'text', maxlength: 60, value: t ? t.title : pre || '' });
     const list = h('select', {}, S.d.lists.map((l) => h('option', { value: l.id, selected: t ? t.list === l.id : l.id === S.cur }, l.name)));
     const due = dateField('Due', t ? t.due : day);
     const note = h('input', { type: 'text', maxlength: 240, value: t ? t.note : '' });
@@ -490,14 +497,16 @@ CrossPoint.registerPlugin(async (container, api) => {
 
 std::string manifestText() {
   return std::string("{\n  \"name\": \"") + kName +
-         "\",\n  \"title\": \"Daybook\",\n  \"description\": \"Calendar and to-dos, the same ones as on the "
+         "\",\n  \"title\": \"Daybook\",\n  \"description\": \"Calendar and "
+         "to-dos, the same ones as on the "
          "device.\",\n  \"version\": \"" +
          kVersion + "\",\n  \"mount\": \"settings\"\n}\n";
 }
 
 std::string dirOf(const char* root) { return std::string(root) + "/" + kName; }
 
-// An existing copy keeps its place, in whichever root it lives; a new one goes to the first root.
+// An existing copy keeps its place, in whichever root it lives; a new one goes
+// to the first root.
 std::string pluginDir() {
   for (size_t i = 0; i < PluginLocations::ROOT_COUNT; i++) {
     const std::string manifest = dirOf(PluginLocations::ROOTS[i]) + "/manifest.json";

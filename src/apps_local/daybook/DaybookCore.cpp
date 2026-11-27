@@ -227,8 +227,9 @@ std::string foldForDisplay(const std::string& in) {
 // --- Storage format ----------------------------------------------------------
 //
 // V1
-// E <id> <title> <start> <end> <allday 0|1> <startMin> <endMin> <repeat> <every> <until|-> <location> <note>
-// with TAB between fields; \t \n \\ escaped inside text.
+// E <id> <title> <start> <end> <allday 0|1> <startMin> <endMin> <repeat>
+// <every> <until|-> <location> <note> with TAB between fields; \t \n \\ escaped
+// inside text.
 
 namespace {
 
@@ -338,10 +339,11 @@ uint32_t nextId(const std::vector<Event>& events) {
   return top + 1;
 }
 
-// --- To-dos --------------------------------------------------------------------
+// --- To-dos
+// --------------------------------------------------------------------
 //
-// T <id> <list> <title> <created> <due|-> <done|-> <note>      (TAB separated)
-// L <id> <name>
+// T <id> <list> <title> <created> <due|-> <done|-> <note> [<done minute>] (TAB
+// separated) L <id> <name>
 
 namespace {
 
@@ -377,6 +379,7 @@ std::string serializeTasks(const std::vector<Task>& tasks) {
     out += t.done ? formatDate(t.doneOn) : std::string("-");
     out += '\t';
     putEscaped(out, t.note);
+    if (t.done && t.doneMin >= 0 && t.doneMin < 1440) out += '\t' + std::to_string(t.doneMin);
     out += '\n';
   }
   return out;
@@ -402,6 +405,10 @@ size_t parseTasks(const std::string& text, std::vector<Task>& out) {
     t.hasDue = f[4] != "-" && parseDate(f[4], t.due);
     t.done = f[5] != "-" && parseDate(f[5], t.doneOn);
     t.note = clip(unescape(f[6]), kMaxTaskNote);
+    if (t.done && f.size() > 7 && !f[7].empty()) {
+      const long m = std::strtol(f[7].c_str(), nullptr, 10);
+      if (m >= 0 && m < 1440) t.doneMin = static_cast<int>(m);
+    }
     out.push_back(t);
   }
   return out.size();
@@ -533,7 +540,8 @@ std::string capitalizeFirst(const std::string& text) {
   const auto b0 = static_cast<uint8_t>(out[0]);
   if (b0 >= 'a' && b0 <= 'z') {
     out[0] = static_cast<char>(b0 - 32);
-  } else if (b0 == 0xC3 && out.size() >= 2) {  // Latin-1 letters: U+00E0..U+00FE, except the division sign
+  } else if (b0 == 0xC3 && out.size() >= 2) {  // Latin-1 letters: U+00E0..U+00FE, except the
+                                               // division sign
     const auto b1 = static_cast<uint8_t>(out[1]);
     if (b1 >= 0xA0 && b1 <= 0xBE && b1 != 0xB7) out[1] = static_cast<char>(b1 - 0x20);
   } else if (b0 == 0xC5 && out.size() >= 2) {  // o and u with double acute
@@ -543,7 +551,8 @@ std::string capitalizeFirst(const std::string& text) {
   return out;
 }
 
-// --- Search -------------------------------------------------------------------
+// --- Search
+// -------------------------------------------------------------------
 
 std::string searchKey(const std::string& text) {
   std::string out;
@@ -597,7 +606,8 @@ std::string searchKey(const std::string& text) {
 }
 
 namespace {
-// Every space-separated word of `key` is somewhere in `hay` (both already searchKeys).
+// Every space-separated word of `key` is somewhere in `hay` (both already
+// searchKeys).
 bool hasAllWords(const std::string& hay, const std::string& key) {
   size_t i = 0;
   bool any = false;
@@ -622,7 +632,8 @@ bool matchesQuery(const Task& task, const std::string& key) {
   return hasAllWords(searchKey(task.title + " " + task.note), key);
 }
 
-// --- Settings -------------------------------------------------------------------
+// --- Settings
+// -------------------------------------------------------------------
 
 namespace {
 // The number after "key=" at the start of a line, or `fallback`.
@@ -651,13 +662,16 @@ Settings parseSettings(const std::string& text) {
 
 std::string serializeSettings(const Settings& s) {
   char buf[160];
-  std::snprintf(buf, sizeof buf, "first=%d\nweeks=%d\nlist=%d\ngrid=%d\nagenda=%d\nsize=%d\ntomorrow=%d\nbottom=%d\n",
+  std::snprintf(buf, sizeof buf,
+                "first=%d\nweeks=%d\nlist=%d\ngrid=%d\nagenda=%d\nsize=%"
+                "d\ntomorrow=%d\nbottom=%d\n",
                 s.firstDay, s.weekNumbers ? 1 : 0, s.listHome ? 1 : 0, s.weekHome ? 1 : 0, s.agenda ? 1 : 0,
                 s.agendaSize, s.tomorrow ? 1 : 0, s.agendaBottom ? 1 : 0);
   return buf;
 }
 
-// --- Sleep-screen agenda --------------------------------------------------------
+// --- Sleep-screen agenda
+// --------------------------------------------------------
 
 bool eventOver(const Event& event, const Occurrence& occurrence, const Day today, const int nowMinutes) {
   if (event.allDay || occurrence.end > today) return false;
@@ -779,9 +793,6 @@ std::vector<AgendaLine> layoutAgenda(const Agenda& agenda, const AgendaMetrics& 
   for (const AgendaItem& it : agenda.today) {
     rows.push_back({it.kind == AgendaKind::Task ? AgendaStyle::Task : AgendaStyle::Event, it.text});
   }
-  if (agenda.today.empty()) {
-    rows.push_back({AgendaStyle::Event, agenda.pastEvents ? "Nothing more today" : "Nothing planned"});
-  }
 
   const int room = m.avail - tomH;
   const size_t itemCap = opt.evening ? 4 : agenda.today.size() + 1;
@@ -802,7 +813,10 @@ std::vector<AgendaLine> layoutAgenda(const Agenda& agenda, const AgendaMetrics& 
   }
   const size_t hidden = agenda.today.empty() ? 0 : rows.size() - shown;
   if (hidden > 0) out.push_back({AgendaStyle::More, "+" + std::to_string(hidden) + " more"});
-  for (const AgendaLine& l : tom) out.push_back(l);
+  for (const AgendaLine& l : tom) {
+    if (out.empty() && l.style == AgendaStyle::Rule) continue;  // nothing above it to divide from
+    out.push_back(l);
+  }
   return out;
 }
 

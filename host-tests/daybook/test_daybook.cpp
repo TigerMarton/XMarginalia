@@ -216,10 +216,12 @@ int main() {
     std::vector<Event> out;
     CHECK(parse("", out) == 0);
     CHECK(parse("garbage\nE\nE\tx\n\n\t\t\n", out) == 0);
-    CHECK(parse("V1\nE\t1\tok\t2026-11-20\t2026-11-19\t1\t0\t0\t0\t1\t-\t\t\n", out) == 0);  // end before start
-    CHECK(parse("V1\nE\t1\tok\t2026-02-30\t2026-02-30\t1\t0\t0\t0\t1\t-\t\t\n", out) == 0);  // not a date
-    CHECK(parse("V1\nE\t1\tgood\t2026-11-20\t2026-11-20\t1\t0\t0\t9\t0\t-\t\t\n", out) ==
-          1);  // bad repeat/every healed
+    CHECK(parse("V1\nE\t1\tok\t2026-11-20\t2026-11-19\t1\t0\t0\t0\t1\t-\t\t\n",
+                out) == 0);  // end before start
+    CHECK(parse("V1\nE\t1\tok\t2026-02-30\t2026-02-30\t1\t0\t0\t0\t1\t-\t\t\n",
+                out) == 0);  // not a date
+    CHECK(parse("V1\nE\t1\tgood\t2026-11-20\t2026-11-20\t1\t0\t0\t9\t0\t-\t\t\n",
+                out) == 1);  // bad repeat/every healed
     CHECK(out[0].repeat == Repeat::None && out[0].every == 1);
     std::string huge = "V1\n";
     for (int i = 0; i < 1000; ++i) huge += "E\t1\tx\t2026-01-01\t2026-01-01\t1\t0\t0\t0\t1\t-\t\t\n";
@@ -409,12 +411,17 @@ int main() {
     occurrencesOn(evs, today, occ);
     CHECK(occ.size() == 5);
     CHECK(!eventOver(a, Occurrence{0, today, today}, today, 9 * 60 + 29));
-    CHECK(eventOver(a, Occurrence{0, today, today}, today, 9 * 60 + 30));    // over at its end minute
-    CHECK(!eventOver(b, Occurrence{0, today, today}, today, 15 * 60 + 29));  // no end: an hour
+    CHECK(eventOver(a, Occurrence{0, today, today}, today,
+                    9 * 60 + 30));  // over at its end minute
+    CHECK(!eventOver(b, Occurrence{0, today, today}, today,
+                     15 * 60 + 29));  // no end: an hour
     CHECK(eventOver(b, Occurrence{0, today, today}, today, 15 * 60 + 30));
-    CHECK(!eventOver(c, Occurrence{0, today, today}, today, 23 * 60 + 59));      // all day never over
-    CHECK(!eventOver(d, Occurrence{0, today - 1, today + 1}, today, 23 * 60));   // still running tomorrow
-    CHECK(!eventOver(f, Occurrence{0, today - 2, today}, today, 10 * 60 + 59));  // last day: until 11:00
+    CHECK(!eventOver(c, Occurrence{0, today, today}, today,
+                     23 * 60 + 59));  // all day never over
+    CHECK(!eventOver(d, Occurrence{0, today - 1, today + 1}, today,
+                     23 * 60));  // still running tomorrow
+    CHECK(!eventOver(f, Occurrence{0, today - 2, today}, today,
+                     10 * 60 + 59));  // last day: until 11:00
     CHECK(eventOver(f, Occurrence{0, today - 2, today}, today, 11 * 60));
 
     std::vector<Task> ts;
@@ -444,7 +451,8 @@ int main() {
     CHECK(firstTask == 5);
     CHECK(morning.overdue == 2);
     CHECK(morning.today.back().kind == AgendaKind::Task && morning.today.back().text == "Pay rent");
-    CHECK(morning.tomorrow.size() == 4);  // Conference (still running) and Day off (all day), Gym 07:00, Call mum
+    CHECK(morning.tomorrow.size() == 4);  // Conference (still running) and Day
+                                          // off (all day), Gym 07:00, Call mum
     CHECK(morning.tomorrow[0].text == "All day - Conference" && morning.tomorrow[1].text == "All day - Day off");
     CHECK(morning.tomorrow[2].text == "07:00 - Gym");
     CHECK(morning.tomorrow[3].kind == AgendaKind::Task && morning.tomorrow[3].text == "Call mum");
@@ -522,11 +530,12 @@ int main() {
     m.avail = 500;
     // nothing at all
     auto l0 = layoutAgenda(a, m, "Tomorrow", opts(false));
-    CHECK(l0.size() == 1 && l0[0].text == "Nothing planned");
+    CHECK(l0.empty());  // an empty day says nothing
     a.pastEvents = true;
-    CHECK(layoutAgenda(a, m, "Tomorrow", opts(false))[0].text == "Nothing more today");
+    CHECK(layoutAgenda(a, m, "Tomorrow", opts(false)).empty());
     a.pastEvents = false;
-    // no headings; events then to-dos; the overdue count first; tomorrow empty: no block, no rule
+    // no headings; events then to-dos; the overdue count first; tomorrow empty:
+    // no block, no rule
     a.today = {{AgendaKind::Event, "09:00 - A"}, {AgendaKind::Task, "T1"}};
     a.overdue = 3;
     auto l1 = layoutAgenda(a, m, "Tomorrow", opts(false));
@@ -551,7 +560,8 @@ int main() {
     CHECK(count(l3, AgendaStyle::TomEvent) + count(l3, AgendaStyle::TomTask) == 8 && l3.back().text == "+4 more");
     a.tomorrow[5].kind = AgendaKind::Task;
     CHECK(count(layoutAgenda(a, m, "Tomorrow", opts(true)), AgendaStyle::TomTask) == 1);
-    // evening: today shows at most 4 rows, the rest "+N more", before tomorrow's block
+    // evening: today shows at most 4 rows, the rest "+N more", before
+    // tomorrow's block
     Agenda busy;
     for (int i = 0; i < 7; ++i) busy.today.push_back({AgendaKind::Event, "e" + std::to_string(i)});
     busy.today.push_back({AgendaKind::Task, "task"});
@@ -593,12 +603,31 @@ int main() {
               m.avail = avail;
               auto lines = layoutAgenda(x, m, "Tomorrow", opts(ev == 1));
               CHECK(total(lines) <= avail);
-              CHECK(!lines.empty());
+              CHECK(!lines.empty() || (nd == 0 && od == 0));  // an empty day says nothing
             }
           }
         }
       }
     }
+  }
+
+  // --- the minute a to-do was ticked ---
+  {
+    Task t;
+    t.id = 9;
+    t.title = "timed";
+    t.created = daysFromCivil(2026, 1, 1);
+    t.done = true;
+    t.doneOn = daysFromCivil(2026, 1, 2);
+    t.doneMin = 14 * 60 + 5;
+    std::vector<Task> back;
+    CHECK(parseTasks(serializeTasks({t}), back) == 1 && back[0].doneMin == 845 && back[0].doneOn == t.doneOn);
+    CHECK(parseTasks("V1\nT\t5\t1\told\t2026-01-01\t-\t2026-01-02\t\n", back) == 1 && back[0].done &&
+          back[0].doneMin == -1);  // a file from before the column
+    CHECK(parseTasks("V1\nT\t5\t1\tx\t2026-01-01\t-\t2026-01-02\t\t99999\n", back) == 1 && back[0].doneMin == -1);
+    t.done = false;
+    CHECK(serializeTasks({t}).find("\t845") == std::string::npos);  // open: nothing written
+    CHECK(kMaxLists == 14);
   }
 
   // --- settings file ---

@@ -52,6 +52,7 @@ class DaybookActivity final : public Activity {
     TaskForm,
     ListForm,
     Search,
+    Pick,  // month and year picker
   };
   enum class Act : uint8_t {
     PrevMonth,
@@ -95,6 +96,11 @@ class DaybookActivity final : public Activity {
     EditTask,
     ToggleTask,
     TaskField,
+    OpenDay,
+    OpenPicker,
+    PickMonth,
+    PickYear,
+    GoList,
   };
   enum Field : uint8_t {
     FTitle,
@@ -141,7 +147,8 @@ class DaybookActivity final : public Activity {
   std::string search_;         // the Find screen's words
   daybook::plugin::State pluginState_ = daybook::plugin::State::Missing;  // read when Settings opens
 
-  // The last thing deleted, kept until something else is saved so the Undo bar can bring it back.
+  // The last thing deleted, kept until something else is saved so the Undo bar
+  // can bring it back.
   struct Trash {
     enum class Kind : uint8_t { None, Event, Task, List } kind = Kind::None;
     int at = 0;  // where it sat in its list
@@ -156,6 +163,8 @@ class DaybookActivity final : public Activity {
   View taskFrom_ = View::Todo;   // where Back from a task goes
   int page_ = 0;
   int pages_ = 1;
+  int pickYear_ = 2026;     // the year the picker shows
+  bool pickYears_ = false;  // the picker is on its list of years
   int detailIndex_ = -1;
   bool confirmDelete_ = false;
   daybook::Event draft_;
@@ -181,11 +190,13 @@ class DaybookActivity final : public Activity {
   void saveSettings();
   void restoreTrash();
   void askSearch();
-  void discard(Trash::Kind kind, int at, const std::string& label);  // starts a fresh Trash
+  void discard(Trash::Kind kind, int at,
+               const std::string& label);  // starts a fresh Trash
   daybook::Day weekStart() const;
   void refreshToday();
   void back();
-  const Hit* hitAt(int x, int y) const;              // the top-most hit under a point, or null
+  const Hit* hitAt(int x,
+                   int y) const;                     // the top-most hit under a point, or null
   static std::string weekdayName(daybook::Day day);  // "Monday"
   static bool isRowAct(Act act);                     // a row or day cell: acts on the lift, not the press
   void route(Act act, int32_t value);
@@ -213,8 +224,11 @@ class DaybookActivity final : public Activity {
   void textBox(int fontId, int x, int y, int w, int h, const std::string& text, bool center, bool black = true) const;
   int drawHeader(const std::string& title, const std::string& right, int fontId = -1);
   void drawPager(int y, int h);
+  void drawScrollbar(int y0, int y1) const;  // a thin track on the right edge when there is more than one page
+  void drawPicker();
   int bottomBar(int count, const char* const* labels, const Act* acts);
-  int homeBar();  // the two small button rows of the month and list screens; returns their top
+  int homeBar();  // the two small button rows of the month and list screens;
+                  // returns their top
   View home() const { return listMode_ ? View::List : (weekMode_ ? View::Week : View::Month); }
   int drawMonthNav(const std::string& title);  // "< title >" row; returns the y just below it
   void drawMonth();
@@ -231,9 +245,11 @@ class DaybookActivity final : public Activity {
   void rbox(int x, int y, int w, int h, int thickness = 1, int radius = kRound) const;
   void rfill(int x, int y, int w, int h, bool black, int radius = kRound) const;
   void drawSettings();
-  // Form rows, drawn in the value column that starts at rx. `base` is (field << 3); zones 1..4 are the arrows.
+  // Form rows, drawn in the value column that starts at rx. `base` is (field <<
+  // 3); zones 1..4 are the arrows.
   void rowBox(int rx, int ry, int rw, int h, Act act, int base, const std::string& value);
-  void rowCycler(int rx, int ry, int rw, int h, Act act, int base, const std::string& value);  // < value >
+  void rowCycler(int rx, int ry, int rw, int h, Act act, int base,
+                 const std::string& value);  // < value >
   void rowStepper(int rx, int ry, int rw, int h, Act act, int base, const std::string& value, const std::string& sub,
                   bool centerHit);  // << < value > >>
   std::string whenLabel(const daybook::Event& ev, const daybook::Occurrence& o, daybook::Day day) const;
@@ -242,11 +258,14 @@ class DaybookActivity final : public Activity {
 
   // --- drawing (DaybookTodo.cpp) ---
   void drawCheck(int x, int y, int size, bool checked, bool black) const;
-  // One task: a box to tick, the title, and small text (a due or done date) on the right, or above the
-  // title when `twoLine`. Tapping the box ticks it; tapping the rest opens the task.
+  // One task: a box to tick, the title, and small text (a due or done date) on
+  // the right, or above the title when `twoLine`. Tapping the box ticks it;
+  // tapping the rest opens the task.
   void taskRow(int y, int h, size_t index, bool inverted, bool twoLine, const std::string& small,
                const std::string& corner = "");
   std::string shortDate(daybook::Day day) const;
+  std::string doneLabel(const daybook::Task& task) const;  // "done 27 Nov 14:05"
+  int nowMinute() const;
   std::string listName(uint32_t id) const;
   void drawTodo();
   void drawLists();

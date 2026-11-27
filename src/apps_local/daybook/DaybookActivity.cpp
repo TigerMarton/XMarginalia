@@ -96,7 +96,8 @@ std::string dayTitle(const cal::Day day, const bool withYear = true) {
   return buf;
 }
 
-// The time column of a row: "All day", "09:00-10:00", or the span of a multi-day event.
+// The time column of a row: "All day", "09:00-10:00", or the span of a
+// multi-day event.
 std::string shortWhen(const cal::Event& ev, const cal::Occurrence& o, const bool twelveHour) {
   if (o.end > o.start) return cal::formatSpan(o.start, o.end);
   if (ev.allDay) return "All day";
@@ -126,11 +127,13 @@ std::unique_ptr<Activity> DaybookActivity::create(GfxRenderer& renderer, MappedI
   return makeUniqueNoThrow<DaybookActivity>(renderer, mappedInput);
 }
 
-// --- Lifecycle and storage ------------------------------------------------------------------
+// --- Lifecycle and storage
+// ------------------------------------------------------------------
 
 void DaybookActivity::onEnter() {
   Activity::onEnter();
-  toybox::ensureFonts(renderer);  // a wake lands here directly, not through the Shelf screen that registers them
+  toybox::ensureFonts(renderer);  // a wake lands here directly, not through the
+                                  // Shelf screen that registers them
   if (started_) {                 // back from the keyboard screen: keep everything as it was
     changed();
     return;
@@ -185,6 +188,13 @@ void DaybookActivity::saveSettings() {
   writeText(kSettingsPath, cal::serializeSettings(s));
 }
 
+int DaybookActivity::nowMinute() const {
+  const std::time_t now = std::time(nullptr);
+  std::tm t{};
+  localtime_r(&now, &t);
+  return t.tm_hour * 60 + t.tm_min;
+}
+
 void DaybookActivity::refreshToday() {
   const std::time_t now = std::time(nullptr);
   clockKnown_ = clockfloor::trusted(static_cast<int64_t>(now));
@@ -193,7 +203,8 @@ void DaybookActivity::refreshToday() {
     localtime_r(&now, &t);
     today_ = cal::daysFromCivil(t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
   } else {
-    today_ = cal::daysFromCivil(2026, 1, 1);  // the clock is not set: no "today" is drawn
+    today_ = cal::daysFromCivil(2026, 1,
+                                1);  // the clock is not set: no "today" is drawn
   }
 }
 
@@ -210,7 +221,8 @@ void DaybookActivity::changed() {
   requestUpdate();
 }
 
-// --- Input -------------------------------------------------------------------------------------
+// --- Input
+// -------------------------------------------------------------------------------------
 
 void DaybookActivity::back() {
   switch (view_) {
@@ -221,6 +233,14 @@ void DaybookActivity::back() {
       return;
     case View::Search:
       view_ = home();
+      break;
+    case View::Pick:
+      if (pickYears_) {
+        pickYears_ = false;
+        page_ = 0;
+      } else {
+        view_ = home();
+      }
       break;
     case View::Day:
       view_ = home();
@@ -261,18 +281,21 @@ void DaybookActivity::loop() {
   }
   if (!hitsReady_.load()) return;
 
-  // Only up/down swipes page. A sideways swipe from the left edge is the Back gesture, so it is not used here:
-  // months and lists change with the on-screen buttons and rows.
+  // Only up/down swipes page. A sideways swipe from the left edge is the Back
+  // gesture, so it is not used here: months and lists change with the on-screen
+  // buttons and rows.
   const MappedInputManager::SwipeDir swipe = mappedInput.wasSwipe();
   if (view_ == View::Day || view_ == View::List || view_ == View::Todo || view_ == View::Search ||
-      view_ == View::Settings) {
+      view_ == View::Settings || view_ == View::Lists || (view_ == View::Pick && pickYears_)) {
     if (swipe == MappedInputManager::SwipeDir::Up) return route(Act::PageNext, 0);
     if (swipe == MappedInputManager::SwipeDir::Down) return route(Act::PagePrev, 0);
   }
 
-  // Buttons act when the finger goes DOWN, not when it lifts: that is the whole difference between a tap that
-  // feels instant and one that feels late. On the screens that swipe (month, list, day, to-do) the rows and day
-  // cells still wait for the lift, because a swipe starts on top of them; the buttons there act on the press.
+  // Buttons act when the finger goes DOWN, not when it lifts: that is the whole
+  // difference between a tap that feels instant and one that feels late. On the
+  // screens that swipe (month, list, day, to-do) the rows and day cells still
+  // wait for the lift, because a swipe starts on top of them; the buttons there
+  // act on the press.
   const bool swipeScreen = view_ == View::Month || view_ == View::Week || view_ == View::List || view_ == View::Day ||
                            view_ == View::Todo || view_ == View::Search;
   int downX = 0;
@@ -280,7 +303,8 @@ void DaybookActivity::loop() {
   if (mappedInput.wasScreenTouchPressed(downX, downY) && !HeaderBackTapTarget::contains(downX, downY)) {
     const Hit* hit = hitAt(downX, downY);
     if (hit && !(swipeScreen && isRowAct(hit->act))) {
-      mappedInput.swallowCurrentTouch();  // the lift must not tap what the press just did
+      mappedInput.swallowCurrentTouch();  // the lift must not tap what the press
+                                          // just did
       route(hit->act, hit->value);
       return;
     }
@@ -300,7 +324,8 @@ const DaybookActivity::Hit* DaybookActivity::hitAt(const int x, const int y) con
 }
 
 bool DaybookActivity::isRowAct(const Act act) {
-  return act == Act::PickDay || act == Act::OpenEvent || act == Act::EditTask || act == Act::ToggleTask;
+  return act == Act::PickDay || act == Act::OpenDay || act == Act::OpenEvent || act == Act::EditTask ||
+         act == Act::ToggleTask || act == Act::GoList;
 }
 
 void DaybookActivity::startDraft(const int index) {
@@ -364,7 +389,8 @@ void DaybookActivity::route(const Act act, const int32_t value) {
       saveSettings();
       break;
     case Act::SetGrid:                          // value 0 = month, 1 = week
-      if (value == 1 && view_ != View::Week) {  // the week of the selected day, if it is in the month on screen
+      if (value == 1 && view_ != View::Week) {  // the week of the selected day, if
+                                                // it is in the month on screen
         const cal::Date d = cal::civilFromDays(selected_);
         if (d.y != year_ || d.m != month_) {
           const cal::Date t = cal::civilFromDays(today_);
@@ -396,11 +422,45 @@ void DaybookActivity::route(const Act act, const int32_t value) {
       pluginState_ = daybook::plugin::state();
       view_ = View::Settings;
       break;
-    case Act::PickDay:
+    case Act::PickDay: {  // a day in the month grid: the first tap picks it, a
+                          // second tap opens it
+      const bool again = value == selected_;
+      selected_ = value;
+      openMonthOf(value);
+      page_ = 0;
+      if (again) view_ = View::Day;
+      break;
+    }
+    case Act::OpenDay:
       selected_ = value;
       page_ = 0;
       view_ = View::Day;
       break;
+    case Act::OpenPicker:  // the title: months of a year, and from there the years
+      if (view_ == View::Pick) {
+        pickYears_ = true;
+        page_ = (std::clamp(pickYear_, 1970, 2200) - 1970) / 20;
+      } else {
+        pickYear_ = year_;
+        pickYears_ = false;
+        page_ = 0;
+        view_ = View::Pick;
+      }
+      break;
+    case Act::PickYear:
+      pickYear_ = std::clamp(static_cast<int>(value), 1970, 2200);
+      pickYears_ = false;
+      page_ = 0;
+      break;
+    case Act::PickMonth: {
+      year_ = pickYear_;
+      month_ = static_cast<int>(value);
+      const cal::Date t = cal::civilFromDays(today_);
+      selected_ = (clockKnown_ && t.y == year_ && t.m == month_) ? today_ : cal::daysFromCivil(year_, month_, 1);
+      page_ = 0;
+      view_ = home();
+      break;
+    }
     case Act::AddEvent:
       formFrom_ = view_;
       startDraft(-1);
@@ -526,6 +586,7 @@ void DaybookActivity::route(const Act act, const int32_t value) {
     case Act::EditTask:
     case Act::ToggleTask:
     case Act::TaskField:
+    case Act::GoList:
     case Act::Nop:  // returned above; listed so the switch covers every act
       break;
     case Act::Back:
@@ -575,7 +636,8 @@ void DaybookActivity::askSearch() {
   });
 }
 
-// Something was just deleted: remember where it was, so the Undo bar can put it back.
+// Something was just deleted: remember where it was, so the Undo bar can put it
+// back.
 void DaybookActivity::discard(const Trash::Kind kind, const int at, const std::string& label) {
   trash_ = Trash{};
   trash_.kind = kind;
@@ -641,7 +703,8 @@ bool DaybookActivity::saveDraftAsTask() {
   return true;
 }
 
-// zone: 0 = the whole row; 1..4 = "<<", "<", ">", ">>" (month/hour, day/quarter-hour)
+// zone: 0 = the whole row; 1..4 = "<<", "<", ">", ">>" (month/hour,
+// day/quarter-hour)
 void DaybookActivity::formTap(const int field, const int zone) {
   const int big = zone == 1 ? -1 : (zone == 4 ? 1 : 0);
   const int small = zone == 2 ? -1 : (zone == 3 ? 1 : 0);
@@ -721,13 +784,15 @@ void DaybookActivity::formTap(const int field, const int zone) {
     default:
       break;
   }
-  // The file holds 1970 to 2200 only; stepping past that would save an event that cannot be read back.
+  // The file holds 1970 to 2200 only; stepping past that would save an event
+  // that cannot be read back.
   draft_.start = cal::clampDay(draft_.start);
   draft_.end = std::max(cal::clampDay(draft_.end), draft_.start);
   if (draft_.hasUntil) draft_.until = cal::clampDay(draft_.until);
 }
 
-// --- Drawing helpers ---------------------------------------------------------------------------
+// --- Drawing helpers
+// ---------------------------------------------------------------------------
 
 void DaybookActivity::addHit(const int x, const int y, const int w, const int h, const Act act, const int32_t value) {
   hits_.push_back(Hit{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(w),
@@ -787,6 +852,18 @@ void DaybookActivity::drawPager(const int y, const int h) {
           true);
 }
 
+// A thin track down the right edge with a block where this page sits, when
+// there is more than one page.
+void DaybookActivity::drawScrollbar(const int y0, const int y1) const {
+  if (pages_ <= 1 || y1 - y0 < 48) return;
+  const int x = renderer.getScreenWidth() - 9;
+  const int track = y1 - y0;
+  const int thumb = std::max(28, track / pages_);
+  const int ty = y0 + (track - thumb) * std::clamp(page_, 0, pages_ - 1) / (pages_ - 1);
+  renderer.fillRect(x + 2, y0, 2, track, true);
+  renderer.fillRect(x, ty, 6, thumb, true);
+}
+
 int DaybookActivity::bottomBar(const int count, const char* const* labels, const Act* acts) {
   const int sw = renderer.getScreenWidth();
   const int sh = renderer.getScreenHeight();
@@ -798,8 +875,9 @@ int DaybookActivity::bottomBar(const int count, const char* const* labels, const
   return y;
 }
 
-// Two rows of small buttons: [Today] [M|W] [List view], then [To-Do's] [Find] [Settings]. The side buttons
-// are equal; the middle ones are smaller. M, W and List view are filled while that view is the one on screen.
+// Two rows of small buttons: [Today] [M|W] [List view], then [To-Do's] [Find]
+// [Settings]. The side buttons are equal; the middle ones are smaller. M, W and
+// List view are filled while that view is the one on screen.
 int DaybookActivity::homeBar() {
   const int sw = renderer.getScreenWidth();
   const int sh = renderer.getScreenHeight();
@@ -844,7 +922,8 @@ std::string DaybookActivity::repeatLabel(const cal::Event& ev) const {
   return s;
 }
 
-// --- Screens -----------------------------------------------------------------------------------
+// --- Screens
+// -----------------------------------------------------------------------------------
 
 int DaybookActivity::drawMonthNav(const std::string& title) {
   const auto& metrics = UITheme::getInstance().getMetrics();
@@ -853,8 +932,60 @@ int DaybookActivity::drawMonthNav(const std::string& title) {
   const int hh = renderer.getLineHeight(kBold) + 20;
   button(kM, top, 64, hh, "<", Act::PrevMonth);
   button(sw - kM - 64, top, 64, hh, ">", Act::NextMonth);
-  textBox(kBold, kM + 70, top, sw - 2 * kM - 140, hh, title, true);
+  // The title is a button too (the month and year picker); a long one gets a
+  // smaller face instead of being cut.
+  const int tx = kM + 70;
+  const int tw = sw - 2 * kM - 140;
+  int font = kBold;
+  if (renderer.getTextWidth(font, title.c_str()) > tw - 12) font = kBoldSmall;
+  if (renderer.getTextWidth(font, title.c_str()) > tw - 12) font = kSmall;
+  rbox(tx, top, tw, hh, 1, 8);
+  textBox(font, tx, top, tw, hh, title, true);
+  addHit(tx, top, tw, hh, Act::OpenPicker, 0);
   return top + hh + 8;
+}
+
+// Months of one year, or (after a tap on the year) twenty years a page. A tap
+// on a month or a year picks it.
+void DaybookActivity::drawPicker() {
+  const int sw = renderer.getScreenWidth();
+  const int sh = renderer.getScreenHeight();
+  int y = drawHeader(pickYears_ ? "Pick a year" : "Pick a month", "");
+  const int gap = 10;
+  if (!pickYears_) {
+    pages_ = 1;
+    const int bh = renderer.getLineHeight(kBold) + 26;
+    button(kM, y, 80, bh, "<", Act::PickYear, pickYear_ - 1);
+    button(sw - kM - 80, y, 80, bh, ">", Act::PickYear, pickYear_ + 1);
+    const int cx = kM + 88;
+    const int cwid = sw - 2 * kM - 176;
+    rbox(cx, y, cwid, bh, 2, 8);
+    textBox(kBold, cx, y, cwid, bh, std::to_string(pickYear_), true);
+    addHit(cx, y, cwid, bh, Act::OpenPicker, 0);
+    y += bh + 14;
+    const int cw = (sw - 2 * kM - 2 * gap) / 3;
+    const int ch = std::min(120, (sh - kM - y - 3 * gap) / 4);
+    for (int m = 0; m < 12; ++m) {
+      const bool current = pickYear_ == year_ && m + 1 == month_;
+      button(kM + (m % 3) * (cw + gap), y + (m / 3) * (ch + gap), cw, ch, kMonthName[m], Act::PickMonth, m + 1, current,
+             kBoldSmall);
+    }
+    return;
+  }
+  constexpr int kPerPage = 20;
+  pages_ = (2200 - 1970 + kPerPage) / kPerPage;
+  page_ = std::clamp(page_, 0, pages_ - 1);
+  const int pagerH = renderer.getLineHeight(kBoldSmall) + 18;
+  const int cw = (sw - 2 * kM - 3 * gap) / 4;
+  const int ch = std::min(96, (sh - kM - pagerH - 12 - y - 4 * gap) / 5);
+  for (int i = 0; i < kPerPage; ++i) {
+    const int year = 1970 + page_ * kPerPage + i;
+    if (year > 2200) break;
+    button(kM + (i % 4) * (cw + gap), y + (i / 4) * (ch + gap), cw, ch, std::to_string(year).c_str(), Act::PickYear,
+           year, year == pickYear_, kBoldSmall);
+  }
+  drawPager(sh - kM - pagerH, pagerH);
+  drawScrollbar(y, sh - kM - pagerH - 6);
 }
 
 void DaybookActivity::drawMonth() {
@@ -899,7 +1030,7 @@ void DaybookActivity::drawMonth() {
       const bool inMonth = d.m == month_;
       const bool isToday = clockKnown_ && day == today_;
       rbox(cx, ry, cw, ch, 1, 4);
-      if (day == selected_) rbox(cx + 2, ry + 2, cw - 4, ch - 4, 1, 3);
+      if (day == selected_) rbox(cx + 1, ry + 1, cw - 2, ch - 2, 3, 5);
       const std::string num = std::to_string(d.d);
       if (isToday) {
         rfill(cx + 4, ry + 4, cw - 8, renderer.getLineHeight(kBoldSmall) + 4, true, 3);
@@ -908,7 +1039,8 @@ void DaybookActivity::drawMonth() {
         textBox(inMonth ? kBoldSmall : kSmall, cx + 4, ry + 4, cw - 8, renderer.getLineHeight(kSmall) + 4, num, true);
       }
       if ((busy >> bit) & 1) renderer.fillRect(cx + 8, ry + ch - 10, cw - 16, 5, true);
-      if ((taskAny >> bit) & 1) {  // a to-do is due: solid square while one is open, hollow when all are done
+      if ((taskAny >> bit) & 1) {  // a to-do is due: solid square while one is
+                                   // open, hollow when all are done
         const int ms = 10;
         if ((taskOpen >> bit) & 1)
           rfill(cx + cw / 2 - ms / 2, ry + ch - 26, ms, ms, true, 2);
@@ -921,9 +1053,10 @@ void DaybookActivity::drawMonth() {
   drawDayStrip(y + weeks * ch + 8, barY - 8);
 }
 
-// A week as a column of days, each with its events and to-dos in small type. A tap on a day's name opens the
-// day; a tap on a row opens that event or to-do. When the week is busy every day gets the same number of rows
-// and says "+N more" for the rest, so the whole week always fits on one screen.
+// A week as a column of days, each with its events and to-dos in small type. A
+// tap on a day's name opens the day; a tap on a row opens that event or to-do.
+// When the week is busy every day gets the same number of rows and says "+N
+// more" for the rest, so the whole week always fits on one screen.
 void DaybookActivity::drawWeek() {
   const int sw = renderer.getScreenWidth();
   const cal::Day start = weekStart();
@@ -965,7 +1098,7 @@ void DaybookActivity::drawWeek() {
   for (int d = 0; d < 7; ++d) {
     const cal::Day day = start + d;
     const bool isToday = clockKnown_ && day == today_;
-    addHit(kM, y, sw - 2 * kM, hdrH, Act::PickDay, day);
+    addHit(kM, y, sw - 2 * kM, hdrH, Act::OpenDay, day);
     if (isToday) {
       rfill(kM, y, sw - 2 * kM, hdrH, true, 4);
     } else {
@@ -992,7 +1125,8 @@ void DaybookActivity::drawWeek() {
         drawCheck(kM + 4, y + 4, rowH - 8, t.done, true);
         textBox(kBoldSmall, kM + lw, y, sw - 2 * kM - lw, rowH, t.title, false);
         addHit(kM, y, sw - 2 * kM, rowH, Act::EditTask, static_cast<int32_t>(ti));
-        addHit(kM, y, 40, rowH, Act::ToggleTask, static_cast<int32_t>(ti));  // the tick box ticks it
+        addHit(kM, y, 40, rowH, Act::ToggleTask,
+               static_cast<int32_t>(ti));  // the tick box ticks it
       }
       y += rowH;
     }
@@ -1003,7 +1137,8 @@ void DaybookActivity::drawWeek() {
   }
 }
 
-// The selected day under the month grid: one line per event or task, tap to open the day.
+// The selected day under the month grid: one line per event or task, tap to
+// open the day.
 void DaybookActivity::drawDayStrip(const int y0, const int y1) {
   const int sw = renderer.getScreenWidth();
   const int hdrH = renderer.getLineHeight(kBoldSmall) + 8;
@@ -1017,7 +1152,7 @@ void DaybookActivity::drawDayStrip(const int y0, const int y1) {
   std::string head = dayTitle(selected_, false);
   if (occ.empty() && due.empty()) head += "  -  nothing planned";
   textBox(kBoldSmall, kM, y0 + 2, sw - 2 * kM, hdrH, head, false);
-  addHit(kM, y0, sw - 2 * kM, y1 - y0, Act::PickDay, selected_);
+  addHit(kM, y0, sw - 2 * kM, y1 - y0, Act::OpenDay, selected_);
 
   int y = y0 + 2 + hdrH;
   const int fit = std::max(0, (y1 - y) / rowH);
@@ -1042,8 +1177,9 @@ void DaybookActivity::drawDayStrip(const int y0, const int y1) {
   }
 }
 
-// Everything from today on: late tasks first (inverted), then events and due tasks day by day, a heavy
-// rule and the month's name where a new month starts. Paged.
+// Everything from today on: late tasks first (inverted), then events and due
+// tasks day by day, a heavy rule and the month's name where a new month starts.
+// Paged.
 void DaybookActivity::drawList() {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int sw = renderer.getScreenWidth();
@@ -1054,7 +1190,8 @@ void DaybookActivity::drawList() {
   const int y0 = top + hh + 12;
   const int barY = homeBar();
 
-  // Events, a month at a time so a long list is gathered in date order and cut at a fixed size.
+  // Events, a month at a time so a long list is gathered in date order and cut
+  // at a fixed size.
   constexpr size_t kListCap = 400;
   const cal::Day horizon = today_ + 366;
   std::vector<cal::Occurrence> occ;
@@ -1198,6 +1335,7 @@ void DaybookActivity::drawList() {
   }
 
   if (pages_ > 1) drawPager(barY - 6 - pagerH, pagerH);
+  drawScrollbar(y0, barY - 8 - (pages_ > 1 ? pagerH + 6 : 0));
 }
 
 void DaybookActivity::drawDay() {
@@ -1214,7 +1352,9 @@ void DaybookActivity::drawDay() {
   const int rowH = renderer.getLineHeight(kSmall) + renderer.getLineHeight(kBold) + 22;
   const int bh = renderer.getLineHeight(kBold) + 26;
   const int listBottom = sh - bh - kM - 8;
-  const int perPage = std::max(1, (listBottom - y) / rowH);
+  const int pagerH = renderer.getLineHeight(kBoldSmall) + 18;
+  int perPage = std::max(1, (listBottom - y) / rowH);
+  if (static_cast<int>(total) > perPage) perPage = std::max(1, (listBottom - pagerH - 6 - y) / rowH);
   pages_ = std::max(1, (static_cast<int>(total) + perPage - 1) / perPage);
   page_ = std::clamp(page_, 0, pages_ - 1);
 
@@ -1228,7 +1368,7 @@ void DaybookActivity::drawDay() {
     if (idx >= occ.size()) {  // a to-do due this day
       const cal::Task& t = tasks_[due[idx - occ.size()]];
       std::string small = listName(t.list);
-      if (t.done) small += "   done " + shortDate(t.doneOn);
+      if (t.done) small += "   " + doneLabel(t);
       taskRow(ry, rowH - 6, due[idx - occ.size()], false, true, small);
       continue;
     }
@@ -1242,15 +1382,11 @@ void DaybookActivity::drawDay() {
     addHit(kM, ry, sw - 2 * kM, rowH - 6, Act::OpenEvent, static_cast<int32_t>(occ[idx].event));
   }
 
-  if (pages_ > 1) {
-    const char* labels[4] = {"Prev", "+ Event", "+ To-Do", "Next"};
-    const Act acts[4] = {Act::PagePrev, Act::AddEvent, Act::NewDayTask, Act::PageNext};
-    bottomBar(4, labels, acts);
-  } else {
-    const char* labels[2] = {"+ Event", "+ To-Do"};
-    const Act acts[2] = {Act::AddEvent, Act::NewDayTask};
-    bottomBar(2, labels, acts);
-  }
+  const char* labels[2] = {"+ Event", "+ To-Do"};
+  const Act acts[2] = {Act::AddEvent, Act::NewDayTask};
+  const int barY = bottomBar(2, labels, acts);
+  if (pages_ > 1) drawPager(barY - 6 - pagerH, pagerH);
+  drawScrollbar(y, barY - 8 - (pages_ > 1 ? pagerH + 6 : 0));
 }
 
 void DaybookActivity::drawDetail() {
@@ -1261,7 +1397,8 @@ void DaybookActivity::drawDetail() {
     return;
   }
   const cal::Event& ev = events_[static_cast<size_t>(detailIndex_)];
-  int y = drawHeader(dayTitle(ev.start), "", kBoldSmall);  // the date heads the screen
+  int y = drawHeader(dayTitle(ev.start), "",
+                     kBoldSmall);  // the date heads the screen
   const int lhB = renderer.getLineHeight(kBold);
   const int lh = renderer.getLineHeight(kBody);
   const std::string title = cal::foldForDisplay(ev.title);
@@ -1312,7 +1449,8 @@ void DaybookActivity::drawDetail() {
   }
 }
 
-// --- Form rows. The value column starts at rx; the arrows sit in fixed columns so rows line up. -------
+// --- Form rows. The value column starts at rx; the arrows sit in fixed columns
+// so rows line up. -------
 
 void DaybookActivity::rowBox(const int rx, const int ry, const int rw, const int h, const Act act, const int base,
                              const std::string& value) {
@@ -1324,7 +1462,8 @@ void DaybookActivity::rowBox(const int rx, const int ry, const int rw, const int
 void DaybookActivity::rowCycler(const int rx, const int ry, const int rw, const int h, const Act act, const int base,
                                 const std::string& value) {
   const int bw = 46;
-  addHit(rx, ry, rw, h, act, base);  // the row itself: next value. The arrows, added after, win.
+  addHit(rx, ry, rw, h, act,
+         base);  // the row itself: next value. The arrows, added after, win.
   button(rx + bw + 4, ry, bw, h, "<", act, base | 2);
   button(rx + rw - 2 * bw - 4, ry, bw, h, ">", act, base | 3);
   textBox(kBody, rx + 2 * bw + 8, ry, rw - 4 * bw - 16, h, value, true);
@@ -1356,7 +1495,8 @@ void DaybookActivity::drawForm() {
   int y = drawHeader(asTask ? "New to-do" : (editIndex_ >= 0 ? "Edit event" : "New event"), "");
 
   std::vector<Field> rows;
-  if (asTask) {  // a to-do needs a name, a note, a due day and a list: nothing else
+  if (asTask) {  // a to-do needs a name, a note, a due day and a list: nothing
+                 // else
     rows = {FTitle, FNote, FTodo, FStartDate, FList};
   } else {
     rows = {FTitle, FLocation, FNote};
@@ -1464,14 +1604,19 @@ void DaybookActivity::drawForm() {
         break;
     }
   }
-  if (!message_.empty()) textBox(kBoldSmall, 0, barY - msgH - 2, sw, msgH, message_, true);
+  if (!message_.empty()) {
+    textBox(kBoldSmall, 0, barY - msgH - 2, sw, msgH, message_, true);
+  } else if (!asTask && draft_.repeat == cal::Repeat::Monthly && cal::civilFromDays(draft_.start).d > 28) {
+    textBox(kSmall, 0, barY - msgH - 2, sw, msgH, "Short months: it lands on the last day", true);
+  }
 }
 
 void DaybookActivity::drawSettings() {
   const int sw = renderer.getScreenWidth();
   const int sh = renderer.getScreenHeight();
   int y = drawHeader("Settings", "");
-  // Two lines a row, the setting's name small over its value, so neither is cut short by the other.
+  // Two lines a row, the setting's name small over its value, so neither is cut
+  // short by the other.
   const int lhS = renderer.getLineHeight(kSmall);
   const int lhB = renderer.getLineHeight(kBold);
   const int rowH = lhS + lhB + 18;
@@ -1495,8 +1640,9 @@ void DaybookActivity::drawSettings() {
        Act::InstallPlugin},
   };
   const int nRows = static_cast<int>(sizeof rows / sizeof rows[0]);
-  // The note under the rows takes two row slots. Whatever does not fit goes on the next page
-  // (Prev/Next, or swipe up/down), so the end of the screen is never cut off.
+  // The note under the rows takes two row slots. Whatever does not fit goes on
+  // the next page (Prev/Next, or swipe up/down), so the end of the screen is
+  // never cut off.
   const int slots = nRows + 2;
   const int pagerH = lhS + 18;
   int perPage = std::max(1, (sh - kM - y) / (rowH + 8));
@@ -1515,7 +1661,9 @@ void DaybookActivity::drawSettings() {
   }
   if (nRows >= first && nRows < first + perPage) {  // the note starts on this page
     y += 6;
-    std::string note = "The agenda shows when Sleep screen is set to Custom. Clock format follows System settings.";
+    std::string note =
+        "The agenda shows when Sleep screen is set to Custom. "
+        "Clock format follows System settings.";
     if (!message_.empty()) {
       note = message_;
     } else if (pluginState_ != daybook::plugin::State::Missing && !daybook::plugin::pluginsEnabled()) {
@@ -1533,8 +1681,9 @@ void DaybookActivity::drawSettings() {
   if (pages_ > 1) drawPager(sh - kM - pagerH, pagerH);
 }
 
-// Find: events and to-dos whose name, place or note holds every word typed. Soonest first, then what is behind
-// us; to-dos that are done come last. A tap opens the event or to-do.
+// Find: events and to-dos whose name, place or note holds every word typed.
+// Soonest first, then what is behind us; to-dos that are done come last. A tap
+// opens the event or to-do.
 void DaybookActivity::drawSearch() {
   const int sw = renderer.getScreenWidth();
   const int sh = renderer.getScreenHeight();
@@ -1587,7 +1736,20 @@ void DaybookActivity::drawSearch() {
 
   int y = drawHeader("Find", key.empty() ? std::string() : std::to_string(found.size()) + " found");
   const int qh = renderer.getLineHeight(kBody) + 22;
-  rowBox(kM, y, sw - 2 * kM, qh, Act::EditSearch, 0, search_.empty() ? "tap to type" : search_);
+  {  // a search box: a magnifier, a rule, then the words (or a hint)
+    rbox(kM, y, sw - 2 * kM, qh, 3, 10);
+    const int s = qh - 22;
+    const int d = s * 2 / 3;
+    const int ix = kM + 16;
+    const int iy = y + 10;
+    renderer.drawRoundedRect(ix, iy, d, d, 2, d / 2, true);
+    renderer.drawLine(ix + d - 2, iy + d - 2, ix + s, iy + s, 3, true);
+    const int rx = ix + s + 12;
+    renderer.drawLine(rx, y + 8, rx, y + qh - 8, true);
+    textBox(kBody, rx + 8, y, sw - kM - rx - 16, qh, search_.empty() ? "tap to type" : search_, false,
+            !search_.empty());
+    addHit(kM, y, sw - 2 * kM, qh, Act::EditSearch, 0);
+  }
   y += qh + 10;
 
   const int evH = renderer.getLineHeight(kBold) + 16;
@@ -1618,18 +1780,21 @@ void DaybookActivity::drawSearch() {
     } else {
       const cal::Task& t = tasks_[f.idx];
       const bool late = cal::isOverdue(t, today_);
-      std::string when;  // "due 24 Nov", "27 Nov" or "done 26 Nov", then the list, together in the corner
+      std::string when;  // "due 24 Nov", "27 Nov" or "done 26 Nov", then the
+                         // list, together in the corner
       if (t.done)
-        when = "done " + shortDate(t.doneOn);
+        when = doneLabel(t);
       else if (t.hasDue)
         when = (late ? "due " : "") + shortDate(t.due);
       taskRow(ry, evH - 4, f.idx, late, false, "", when.empty() ? listName(t.list) : when + " - " + listName(t.list));
     }
   }
   if (pages_ > 1) drawPager(sh - kM - pagerH, pagerH);
+  drawScrollbar(y, sh - kM - (pages_ > 1 ? pagerH + 6 : 0));
 }
 
-// "Deleted: Dentist  [Undo]": a bar over the bottom of the screen after a delete, until something else is saved.
+// "Deleted: Dentist  [Undo]": a bar over the bottom of the screen after a
+// delete, until something else is saved.
 void DaybookActivity::drawUndo() {
   if (trash_.kind == Trash::Kind::None) return;
   const bool homeView = view_ == View::Month || view_ == View::Week || view_ == View::List;
@@ -1651,14 +1816,15 @@ void DaybookActivity::drawUndo() {
   const int bw = 90;
   rfill(kM, y, sw - 2 * kM, barH, false);
   rbox(kM, y, sw - 2 * kM, barH, 2);
-  addHit(kM, y, sw - 2 * kM, barH, Act::Nop);  // a tap on the bar must not reach what is under it
+  addHit(kM, y, sw - 2 * kM, barH,
+         Act::Nop);  // a tap on the bar must not reach what is under it
   textBox(kBoldSmall, kM + 4, y, sw - 2 * kM - bw - 12, barH, "Deleted: " + trash_.label, false);
   button(sw - kM - bw - 4, y + 3, bw, barH - 6, "Undo", Act::Undo, 0, true, kBoldSmall);
 }
 
 void DaybookActivity::render(RenderLock&&) {
-  // After deep sleep the clock can still be unset when the app reopens; pick it up as soon as it is
-  // there, and roll "today" over at midnight.
+  // After deep sleep the clock can still be unset when the app reopens; pick it
+  // up as soon as it is there, and roll "today" over at midnight.
   const bool wasKnown = clockKnown_;
   refreshToday();
   if (clockKnown_ && !wasKnown) {
@@ -1703,6 +1869,9 @@ void DaybookActivity::render(RenderLock&&) {
       break;
     case View::ListForm:
       drawListForm();
+      break;
+    case View::Pick:
+      drawPicker();
       break;
   }
   drawUndo();

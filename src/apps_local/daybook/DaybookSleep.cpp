@@ -69,6 +69,7 @@ bool drawAgenda(GfxRenderer& renderer) {
   opt.tomorrow = settings.tomorrow;
   opt.evening = nowMin >= cal::kEveningMinute;
   if (!opt.tomorrow) agenda.tomorrow.clear();
+  if (agenda.overdue == 0 && agenda.today.empty() && agenda.tomorrow.empty()) return false;  // nothing to say: no panel
 
   toybox::ensureFonts(renderer);
   const int W = renderer.getScreenWidth();
@@ -79,8 +80,9 @@ bool drawAgenda(GfxRenderer& renderer) {
   const int fBoldSmall = toybox::kReadingBoldSmallFontId;
   const bool large = opt.size == cal::AgendaSize::Large;
 
-  // Large: the full-width panel in the reading font. Normal and Small: nothing bigger than the "as of"
-  // font (the bold headings are the next cut up), and the panel is only as wide as what it holds.
+  // Large: the full-width panel in the reading font. Normal and Small: nothing
+  // bigger than the "as of" font (the bold headings are the next cut up), and
+  // the panel is only as wide as what it holds.
   const int fDate = large ? fBold : fBoldSmall;
   const int fItem = large ? fBody : fSmall;
   const int fStrong = large ? fBold : fBoldSmall;

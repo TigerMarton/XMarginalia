@@ -1,5 +1,6 @@
-// Daybook, the to-do half: the task list screen, the list manager, the task and list forms, and the
-// rows that show a task on the calendar screens. Rules and file formats are in DaybookCore.
+// Daybook, the to-do half: the task list screen, the list manager, the task and
+// list forms, and the rows that show a task on the calendar screens. Rules and
+// file formats are in DaybookCore.
 
 #include <algorithm>
 #include <cstdio>
@@ -25,7 +26,8 @@ using daybook::addMonths;
 
 }  // namespace
 
-// --- Small helpers --------------------------------------------------------------------------------
+// --- Small helpers
+// --------------------------------------------------------------------------------
 
 void DaybookActivity::clampList() {
   if (lists_.empty()) {
@@ -49,6 +51,12 @@ std::string DaybookActivity::listName(const uint32_t id) const {
 }
 
 // "26 Nov", with the year added when it is not this year.
+std::string DaybookActivity::doneLabel(const cal::Task& task) const {
+  std::string s = "done " + shortDate(task.doneOn);
+  if (task.doneMin >= 0) s += " " + cal::formatMinutes(task.doneMin, twelveHour());
+  return s;
+}
+
 std::string DaybookActivity::shortDate(const cal::Day day) const {
   const cal::Date d = cal::civilFromDays(day);
   std::string s = std::to_string(d.d) + " " + kMonthShort[d.m - 1];
@@ -101,13 +109,15 @@ void DaybookActivity::taskTap(const int field, const int zone) {
     case TDone:
       taskDraft_.done = !taskDraft_.done;
       taskDraft_.doneOn = taskDraft_.done ? today_ : 0;
+      taskDraft_.doneMin = taskDraft_.done ? nowMinute() : -1;
       break;
     default:
       break;
   }
 }
 
-// --- Input ----------------------------------------------------------------------------------------
+// --- Input
+// ----------------------------------------------------------------------------------------
 
 bool DaybookActivity::routeTodo(const Act act, const int32_t value) {
   const bool taskView = view_ == View::TaskForm;
@@ -124,6 +134,7 @@ bool DaybookActivity::routeTodo(const Act act, const int32_t value) {
       page_ = 0;
       view_ = View::Lists;
       break;
+    case Act::GoList:
     case Act::SelectList:
       if (listOk) curList_ = static_cast<size_t>(value);
       page_ = 0;
@@ -185,6 +196,7 @@ bool DaybookActivity::routeTodo(const Act act, const int32_t value) {
         cal::Task& t = tasks_[static_cast<size_t>(value)];
         t.done = !t.done;
         t.doneOn = t.done ? today_ : 0;
+        t.doneMin = t.done ? nowMinute() : -1;
         if (!saveTasks()) message_ = "Card write failed";
       }
       break;
@@ -277,7 +289,8 @@ bool DaybookActivity::routeTodo(const Act act, const int32_t value) {
   return true;
 }
 
-// --- Drawing --------------------------------------------------------------------------------------
+// --- Drawing
+// --------------------------------------------------------------------------------------
 
 // A box with a tick in it when `checked`.
 void DaybookActivity::drawCheck(const int x, const int y, const int size, const bool checked, const bool black) const {
@@ -322,7 +335,8 @@ void DaybookActivity::taskRow(const int y, const int h, const size_t index, cons
     }
   } else {
     const int rw = small.empty() ? 0 : renderer.getTextWidth(kSmall, small.c_str()) + 12;
-    // The list this to-do belongs to: small, in the bottom right corner of the box, and the title yields to it.
+    // The list this to-do belongs to: small, in the bottom right corner of the
+    // box, and the title yields to it.
     const std::string cornerText = corner.empty() ? corner : renderer.truncatedText(kSmall, corner.c_str(), 200);
     const int cw = cornerText.empty() ? 0 : renderer.getTextWidth(kSmall, cornerText.c_str()) + 8;
     const std::string shown = renderer.truncatedText(kBold, title.c_str(), std::max(right - tx - std::max(rw, cw), 16));
@@ -336,7 +350,12 @@ void DaybookActivity::taskRow(const int y, const int h, const size_t index, cons
     if (cw > 0) renderer.drawText(kSmall, right - cw + 4, y + h - lhS - 1, cornerText.c_str(), ink);
   }
   addHit(kM, y, w, h, Act::EditTask, static_cast<int32_t>(index));
-  addHit(kM, y, 56, h, Act::ToggleTask, static_cast<int32_t>(index));  // added last, so it wins its corner
+  if (!twoLine && !corner.empty()) {  // a tap on the list's name goes to that list
+    const int cx = std::max(kM + w / 2, right - 200);
+    addHit(cx, y + h / 2, kM + w - cx, h - h / 2, Act::GoList, static_cast<int32_t>(cal::listIndex(lists_, t.list)));
+  }
+  addHit(kM, y, 56, h, Act::ToggleTask,
+         static_cast<int32_t>(index));  // added last, so it wins its corner
 }
 
 void DaybookActivity::drawTodo() {
@@ -375,12 +394,13 @@ void DaybookActivity::drawTodo() {
     const bool late = cal::isOverdue(t, today_);
     std::string small;
     if (t.done)
-      small = "done " + shortDate(t.doneOn);
+      small = doneLabel(t);
     else if (t.hasDue)
       small = (late ? "due " : "") + shortDate(t.due);
     taskRow(y + i * rowH, rowH - 4, ix[idx], late, false, small);
   }
   if (pages_ > 1) drawPager(barY - 6 - pagerH, pagerH);
+  drawScrollbar(y, barY - 8 - (pages_ > 1 ? pagerH + 6 : 0));
   if (!message_.empty()) textBox(kBoldSmall, 0, barY - pagerH - 12, sw, pagerH, message_, true);
 }
 
@@ -393,9 +413,15 @@ void DaybookActivity::drawLists() {
 
   const int rowH = renderer.getLineHeight(kBold) + 26;
   const int editW = 92;
-  for (size_t i = 0; i < lists_.size(); ++i) {
-    const int ry = y + static_cast<int>(i) * (rowH + 8);
-    if (ry + rowH > barY) break;
+  const int pagerH = renderer.getLineHeight(kBoldSmall) + 18;
+  int perPage = std::max(1, (barY - 8 - y) / (rowH + 8));
+  if (static_cast<int>(lists_.size()) > perPage) perPage = std::max(1, (barY - 8 - pagerH - 6 - y) / (rowH + 8));
+  pages_ = std::max(1, (static_cast<int>(lists_.size()) + perPage - 1) / perPage);
+  page_ = std::clamp(page_, 0, pages_ - 1);
+  for (int k = 0; k < perPage; ++k) {
+    const size_t i = static_cast<size_t>(page_ * perPage + k);
+    if (i >= lists_.size()) break;
+    const int ry = y + k * (rowH + 8);
     rbox(kM, ry, sw - 2 * kM, rowH, 2, 8);
     if (i == curList_) rbox(kM + 3, ry + 3, sw - 2 * kM - 6, rowH - 6, 1, 6);
     addHit(kM, ry, sw - 2 * kM, rowH, Act::SelectList, static_cast<int32_t>(i));
@@ -406,7 +432,9 @@ void DaybookActivity::drawLists() {
     button(sw - kM - editW - 4, ry + 4, editW, rowH - 8, "Edit", Act::EditList, static_cast<int32_t>(i), false,
            kBoldSmall);
   }
-  if (!message_.empty()) textBox(kBoldSmall, 0, barY - 40, sw, 32, message_, true);
+  if (pages_ > 1) drawPager(barY - 6 - pagerH, pagerH);
+  drawScrollbar(y, barY - 8 - (pages_ > 1 ? pagerH + 6 : 0));
+  if (!message_.empty()) textBox(kBoldSmall, 0, barY - 40 - (pages_ > 1 ? pagerH + 6 : 0), sw, 32, message_, true);
 }
 
 void DaybookActivity::drawTaskForm() {

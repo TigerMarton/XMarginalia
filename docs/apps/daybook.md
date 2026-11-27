@@ -4,21 +4,25 @@ A calendar and to-do lists in one app, on the Apps shelf. Touch only.
 
 ## What it does
 
-- **Home.** A month grid, a week, or an upcoming list (the last choice is kept). Under the month sits the selected day.
-  The bar at the bottom: Today, M / W, List view, then To-Do's, Find, Settings.
+- **Home.** A month grid, a week, or an upcoming list (the last choice is kept). Under the month sits the selected day:
+  a tap on a day picks it, a second tap (or a tap on the list under the grid) opens it. A tap on the title above the
+  grid opens a month picker, and from there a year picker. The bar at the bottom: Today, M / W, List view, then
+  To-Do's, Find, Settings. Long screens page with Prev / Next and show a scroll bar on the right edge.
 - **Events.** Name, place, note, all day or from-to times, several days, and repeats (daily, weekly, monthly, yearly,
   every N, until a day). A 31st that lands in a short month moves to the month's end.
-- **To-dos.** Up to eight lists; each to-do may have a due day, which also shows on the calendar. Open ones past their
-  day are listed first as overdue.
+- **To-dos.** Up to fourteen lists; each to-do may have a due day, which also shows on the calendar. Open ones past
+  their day are listed first as overdue. A ticked to-do keeps the day and time it was ticked. A tap on the list's name
+  on a to-do row goes to that list.
 - **Find.** Words typed anywhere in an event's name, place or note, or in a to-do. Case and accents do not matter.
 - **Undo.** After a delete, a bar at the bottom brings the event, to-do or list back until something else is saved.
 
-Limits: 400 events, 500 to-dos, 8 lists; dates 1970 to 2200 (the form will not step past them).
+Limits: 400 events, 500 to-dos, 14 lists; dates 1970 to 2200 (the form will not step past them).
 
 ## Where the data lives
 
 `/.crosspoint/calendar/` on the card: `events.txt`, `tasks.txt`, `lists.txt`, `settings.txt`. Plain text, one record
-per line, tab separated, first line `V1`. Every write goes to a `.tmp` file that is then renamed over the real one, so a
+per line, tab separated, first line `V1`. A ticked to-do has its tick time as an extra last column; files from before
+that column still load. Every write goes to a `.tmp` file that is then renamed over the real one, so a
 power cut leaves the old file, never half of a new one. Bad lines are skipped, never fatal.
 
 All the rules (dates, repeats, search, file formats, the sleep-screen layout) are in `DaybookCore`, which has no
@@ -29,7 +33,7 @@ screens and the card.
 
 Daybook > Settings > *Agenda on the sleep screen* draws a small panel over the Custom sleep screen: today's events that
 are not over yet, today's open to-dos, a count of overdue ones, and optionally tomorrow. Size is Small (counts only),
-Normal or Large; the panel sits at the top or the bottom. It is drawn from the files at the moment the device sleeps,
+Normal or Large; the panel sits at the top or the bottom. On a day with nothing to say there is no panel at all. It is drawn from the files at the moment the device sleeps,
 and carries an "as of 21:40" stamp because the screen does not change while the device is asleep. After 21:00 tomorrow
 gets the room, because that is what you look at before bed.
 

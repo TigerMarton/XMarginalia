@@ -1,7 +1,8 @@
 #pragma once
 
-// A rectangle filled black or white with small rounded corners, for the month's today cell, the filled
-// buttons and the sleep-screen panel. Integer only: the corner rows are the circle's, found by counting.
+// A rectangle filled black or white with small rounded corners, for the month's
+// today cell, the filled buttons and the sleep-screen panel. Integer only: the
+// corner rows are the circle's, found by counting.
 
 #include <GfxRenderer.h>
 
@@ -14,7 +15,8 @@ inline void fillRoundRect(GfxRenderer& renderer, const int x, const int y, const
   if (r < 0) r = 0;
   renderer.fillRect(x, y + r, w, h - 2 * r, black);
   for (int i = 0; i < r; ++i) {
-    // Row i from the top sits (r - i - 1/2) above the circle's centre line; scaled by 2 to stay in integers.
+    // Row i from the top sits (r - i - 1/2) above the circle's centre line;
+    // scaled by 2 to stay in integers.
     const int dy2 = 2 * (r - i) - 1;
     const int chord2 = 4 * r * r - dy2 * dy2;  // (2 * half chord)^2
     int half = 0;
