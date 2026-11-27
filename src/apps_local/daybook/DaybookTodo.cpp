@@ -60,6 +60,11 @@ void DaybookActivity::deleteList(const int index) {
   if (index < 0 || index >= static_cast<int>(lists_.size())) return;
   const uint32_t id = lists_[static_cast<size_t>(index)].id;
   if (id == cal::kMainList) return;  // the default list stays
+  discard(Trash::Kind::List, index, lists_[static_cast<size_t>(index)].name);
+  trash_.list = lists_[static_cast<size_t>(index)];
+  for (const cal::Task& t : tasks_) {
+    if (t.list == id) trash_.tasks.push_back(t);
+  }
   tasks_.erase(std::remove_if(tasks_.begin(), tasks_.end(), [id](const cal::Task& t) { return t.list == id; }),
                tasks_.end());
   lists_.erase(lists_.begin() + index);
@@ -155,6 +160,18 @@ bool DaybookActivity::routeTodo(const Act act, const int32_t value) {
       confirmDelete_ = false;
       view_ = View::TaskForm;
       break;
+    case Act::NewDayTask:  // "+ To-Do" on a day: due that day
+      clampList();
+      taskFrom_ = view_;
+      taskDraft_ = cal::Task{};
+      taskDraft_.list = lists_[curList_].id;
+      taskDraft_.created = today_;
+      taskDraft_.hasDue = true;
+      taskDraft_.due = selected_;
+      taskEdit_ = -1;
+      confirmDelete_ = false;
+      view_ = View::TaskForm;
+      break;
     case Act::EditTask:
       if (!taskOk) break;
       taskFrom_ = view_;
@@ -239,6 +256,8 @@ bool DaybookActivity::routeTodo(const Act act, const int32_t value) {
       } else {
         if (taskView) {
           if (taskEdit_ >= 0 && taskEdit_ < static_cast<int>(tasks_.size())) {
+            discard(Trash::Kind::Task, taskEdit_, tasks_[static_cast<size_t>(taskEdit_)].title);
+            trash_.task = tasks_[static_cast<size_t>(taskEdit_)];
             tasks_.erase(tasks_.begin() + taskEdit_);
             if (!saveTasks()) message_ = "Card write failed";
           }

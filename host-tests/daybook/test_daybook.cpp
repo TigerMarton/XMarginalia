@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -355,6 +356,212 @@ int main() {
     CHECK(capitalizeFirst("\xC5\x91ri") == "\xC5\x90ri");          // ő -> Ő
     CHECK(capitalizeFirst("\xC5\xB1r") == "\xC5\xB0r");            // ű -> Ű
     CHECK(capitalizeFirst("\xC3\xB7") == "\xC3\xB7");              // ÷ is not a letter
+  }
+
+  {  // search: case and accents ignored, every word must appear
+    CHECK(searchKey("Dentist") == "dentist");
+    CHECK(searchKey("\xC3\x81rv\xC3\xADzt\xC5\xB1r\xC5\x91") == "arvizturo");  // Arvizturo with accents
+    CHECK(searchKey("\xC3\xA1rv\xC3\xADzt\xC5\xB1r\xC5\x91") == "arvizturo");
+    CHECK(searchKey("\xC3\x9F") == "\xC3\x9F");                                // a letter with no plain form stays
+    CHECK(searchKey("\xC3\x97") == "\xC3\x97");                                // the multiplication sign is untouched
+    CHECK(searchKey("\xC3\x96") == "o" && searchKey("\xC3\x9C") == "u");        // O and U with umlaut
+    Event e = ev("Call the Dentist", D(2026, 11, 27), D(2026, 11, 27));
+    e.location = "Main street";
+    e.note = "bring \xC3\x89va's card";
+    CHECK(matchesQuery(e, "dentist") && matchesQuery(e, "call dent") && matchesQuery(e, "dentist call"));
+    CHECK(matchesQuery(e, "main") && matchesQuery(e, "eva"));
+    CHECK(!matchesQuery(e, "dentists") && !matchesQuery(e, "") && !matchesQuery(e, "   "));
+    CHECK(!matchesQuery(e, "dentist zebra"));
+    Task k;
+    k.title = "Buy MILK";
+    k.note = "2 litres";
+    CHECK(matchesQuery(k, "milk") && matchesQuery(k, "buy litres") && !matchesQuery(k, "bread"));
+  }
+
+  {  // sleep agenda: what is shown, and what is over
+    std::vector<Event> evs;
+    const Day today = D(2026, 11, 27);
+    Event a = ev("Standup", today, today);
+    a.allDay = false;
+    a.startMin = 9 * 60;
+    a.endMin = 9 * 60 + 30;
+    Event b = ev("Dentist", today, today);
+    b.allDay = false;
+    b.startMin = 14 * 60 + 30;
+    b.endMin = 0;  // no end time
+    Event c = ev("Birthday", today, today);  // all day
+    Event d = ev("Conference", today - 1, today + 1);
+    Event f = ev("Trip home", today - 2, today);
+    f.allDay = false;
+    f.startMin = 20 * 60;
+    f.endMin = 11 * 60;
+    Event g = ev("Gym", today + 1, today + 1);
+    g.allDay = false;
+    g.startMin = 7 * 60;
+    g.endMin = 8 * 60;
+    Event h = ev("Day off", today + 1, today + 1);
+    evs = {a, b, c, d, f, g, h};
+    std::vector<Occurrence> occ;
+    occurrencesOn(evs, today, occ);
+    CHECK(occ.size() == 5);
+    CHECK(!eventOver(a, Occurrence{0, today, today}, today, 9 * 60 + 29));
+    CHECK(eventOver(a, Occurrence{0, today, today}, today, 9 * 60 + 30));   // over at its end minute
+    CHECK(!eventOver(b, Occurrence{0, today, today}, today, 15 * 60 + 29)); // no end: an hour
+    CHECK(eventOver(b, Occurrence{0, today, today}, today, 15 * 60 + 30));
+    CHECK(!eventOver(c, Occurrence{0, today, today}, today, 23 * 60 + 59)); // all day never over
+    CHECK(!eventOver(d, Occurrence{0, today - 1, today + 1}, today, 23 * 60));  // still running tomorrow
+    CHECK(!eventOver(f, Occurrence{0, today - 2, today}, today, 10 * 60 + 59)); // last day: until 11:00
+    CHECK(eventOver(f, Occurrence{0, today - 2, today}, today, 11 * 60));
+
+    std::vector<Task> ts;
+    auto task = [&](const char* title, Day due, bool done) {
+      Task t;
+      t.id = static_cast<uint32_t>(ts.size() + 1);
+      t.title = title;
+      t.hasDue = true;
+      t.due = due;
+      t.done = done;
+      ts.push_back(t);
+    };
+    task("Pay rent", today, false);
+    task("Done thing", today, true);
+    task("Late A", today - 3, false);
+    task("Late B", today - 1, false);
+    task("Late but done", today - 2, true);
+    task("Call mum", today + 1, false);
+    task("Tomorrow done", today + 1, true);
+
+    Agenda morning = buildAgenda(evs, ts, today, 8 * 60, false);
+    CHECK(!morning.pastEvents);
+    CHECK(morning.today.size() == 6);  // Standup, Dentist, Birthday, Conference, Trip home, then Pay rent
+    // events first (all-day ones first), tasks last
+    size_t firstTask = 0;
+    while (firstTask < morning.today.size() && morning.today[firstTask].kind == AgendaKind::Event) ++firstTask;
+    CHECK(firstTask == 5);
+    CHECK(morning.overdue == 2);
+    CHECK(morning.today.back().kind == AgendaKind::Task && morning.today.back().text == "Pay rent");
+    CHECK(morning.tomorrow.size() == 4);  // Conference (still running) and Day off (all day), Gym 07:00, Call mum
+    CHECK(morning.tomorrow[0].text == "All day  Conference" && morning.tomorrow[1].text == "All day  Day off");
+    CHECK(morning.tomorrow[2].text == "07:00  Gym");
+    CHECK(morning.tomorrow[3].kind == AgendaKind::Task && morning.tomorrow[3].text == "Call mum");
+
+    Agenda afternoon = buildAgenda(evs, ts, today, 16 * 60, true);
+    CHECK(afternoon.pastEvents);  // Standup, Dentist and Trip home are over
+    bool sawStandup = false, sawDentist = false, sawTrip = false, sawBirthday = false, sawConf = false;
+    for (const auto& it : afternoon.today) {
+      sawStandup |= it.text.find("Standup") != std::string::npos;
+      sawDentist |= it.text.find("Dentist") != std::string::npos;
+      sawTrip |= it.text.find("Trip home") != std::string::npos;
+      sawBirthday |= it.text == "All day  Birthday";
+      sawConf |= it.text == "All day  Conference";
+    }
+    CHECK(!sawStandup && !sawDentist && !sawTrip && sawBirthday && sawConf);
+    CHECK(afternoon.tomorrow[2].text == "7:00 AM  Gym");  // the clock format is honoured
+
+    Agenda empty = buildAgenda({}, {}, today, 12 * 60, false);
+    CHECK(empty.today.empty() && empty.tomorrow.empty() && empty.overdue == 0 && !empty.pastEvents);
+  }
+
+  {  // sleep agenda layout: always inside the height it is given
+    AgendaMetrics m;
+    m.section = 24;
+    m.item = 26;
+    m.strong = 28;
+    m.rule = 10;
+    m.tomSection = 22;
+    m.tomItem = 20;
+    m.more = 20;
+    const auto total = [&](const std::vector<AgendaLine>& v) {
+      int h = 0;
+      for (const auto& l : v) {
+        switch (l.style) {
+          case AgendaStyle::Section: h += m.section; break;
+          case AgendaStyle::Item: h += m.item; break;
+          case AgendaStyle::Strong: h += m.strong; break;
+          case AgendaStyle::Rule: h += m.rule; break;
+          case AgendaStyle::TomSection: h += m.tomSection; break;
+          case AgendaStyle::TomItem: h += m.tomItem; break;
+          case AgendaStyle::More: h += m.more; break;
+        }
+      }
+      return h;
+    };
+    const auto count = [&](const std::vector<AgendaLine>& v, AgendaStyle s) {
+      size_t n = 0;
+      for (const auto& l : v) n += l.style == s ? 1 : 0;
+      return n;
+    };
+    Agenda a;
+    m.avail = 500;
+    // nothing at all
+    auto l0 = layoutAgenda(a, m, "TOMORROW", false);
+    CHECK(l0.size() == 1 && l0[0].text == "Nothing planned");
+    a.pastEvents = true;
+    CHECK(layoutAgenda(a, m, "TOMORROW", false)[0].text == "Nothing more today");
+    a.pastEvents = false;
+    // tomorrow empty: no block, no rule
+    a.today = {{AgendaKind::Event, "09:00  A"}, {AgendaKind::Task, "T1"}};
+    a.overdue = 3;
+    auto l1 = layoutAgenda(a, m, "TOMORROW", false);
+    CHECK(count(l1, AgendaStyle::Rule) == 0 && count(l1, AgendaStyle::TomSection) == 0);
+    CHECK(l1[0].style == AgendaStyle::Strong && l1[0].text == "3 overdue");
+    CHECK(l1[1].text == "EVENTS" && l1[2].text == "09:00  A" && l1[3].text == "TO-DO TODAY" && l1[4].text == "T1");
+    CHECK(l1.size() == 5);
+    // tomorrow has 6 rows: 4 shown by day, then "+2 more"
+    for (int i = 0; i < 6; ++i) a.tomorrow.push_back({AgendaKind::Event, "t" + std::to_string(i)});
+    auto l2 = layoutAgenda(a, m, "TOMORROW  Sat 28 Nov", false);
+    CHECK(count(l2, AgendaStyle::TomItem) == 4 && count(l2, AgendaStyle::Rule) == 1);
+    CHECK(l2.back().style == AgendaStyle::More && l2.back().text == "+2 more");
+    CHECK(count(l2, AgendaStyle::TomSection) == 1);
+    // in the evening: up to 8 rows for tomorrow
+    for (int i = 6; i < 12; ++i) a.tomorrow.push_back({AgendaKind::Event, "t" + std::to_string(i)});
+    auto l3 = layoutAgenda(a, m, "TOMORROW", true);
+    CHECK(count(l3, AgendaStyle::TomItem) == 8 && l3.back().text == "+4 more");
+    // evening: today shows at most 4 rows, the rest "+N more", before tomorrow's block
+    Agenda busy;
+    for (int i = 0; i < 7; ++i) busy.today.push_back({AgendaKind::Event, "e" + std::to_string(i)});
+    busy.today.push_back({AgendaKind::Task, "task"});
+    busy.tomorrow.push_back({AgendaKind::Event, "x"});
+    m.avail = 700;
+    auto l4 = layoutAgenda(busy, m, "TOMORROW", true);
+    CHECK(count(l4, AgendaStyle::Item) == 4);
+    size_t moreAt = 0, ruleAt = 0;
+    for (size_t i = 0; i < l4.size(); ++i) {
+      if (l4[i].style == AgendaStyle::More) moreAt = i;
+      if (l4[i].style == AgendaStyle::Rule) ruleAt = i;
+    }
+    CHECK(l4[moreAt].text == "+4 more" && moreAt < ruleAt);  // 3 events hidden + the task, 4 in all
+    CHECK(count(l4, AgendaStyle::Section) == 1);               // the TO-DO heading is not left alone
+    // daytime: today is cut by height only
+    auto l5 = layoutAgenda(busy, m, "TOMORROW", false);
+    CHECK(count(l5, AgendaStyle::Item) == 8 && count(l5, AgendaStyle::More) == 0);
+    // every height, every mix: inside avail, never an orphan heading
+    for (int avail = 80; avail <= 760; avail += 7) {
+      for (int nt = 0; nt <= 12; nt += 3) {
+        for (int nd = 0; nd <= 14; nd += 2) {
+          for (int ev = 0; ev < 2; ++ev) {
+            for (size_t od = 0; od < 2; ++od) {
+              Agenda x;
+              for (int i = 0; i < nd; ++i) x.today.push_back({i % 3 ? AgendaKind::Event : AgendaKind::Task, "d"});
+              std::stable_sort(x.today.begin(), x.today.end(),
+                               [](const AgendaItem& p, const AgendaItem& q) { return p.kind < q.kind; });
+              for (int i = 0; i < nt; ++i) x.tomorrow.push_back({AgendaKind::Event, "t"});
+              x.overdue = od * 2;
+              m.avail = avail;
+              auto lines = layoutAgenda(x, m, "TOMORROW", ev == 1);
+              const int h = total(lines);
+              CHECK(h <= avail);
+              for (size_t i = 0; i < lines.size(); ++i) {
+                if (lines[i].style == AgendaStyle::Section) {
+                  if (!(i + 1 < lines.size() && lines[i + 1].style == AgendaStyle::Item) && g_fail < 8) std::printf("orphan avail=%d nt=%d nd=%d ev=%d od=%zu i=%zu n=%zu\n", avail, nt, nd, ev, od, i, lines.size());
+                  CHECK(i + 1 < lines.size() && lines[i + 1].style == AgendaStyle::Item);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   std::printf("%d checks, %d failed\n", g_checks, g_fail);

@@ -16,7 +16,6 @@
 #include "../../CrossPointSettings.h"
 #include "../../activities/ActivityResult.h"
 #include "../../activities/util/KeyboardEntryActivity.h"
-#include "DaybookPlugin.h"
 #include "DaybookSleep.h"
 #include "../../components/HeaderBackTapTarget.h"
 #include "../../components/UITheme.h"
@@ -80,6 +79,15 @@ bool writeText(const char* path, const std::string& text) {
 }
 
 using daybook::addMonths;
+
+// The number after "key=" on its own line of the settings file, or `fallback`.
+int settingInt(const std::string& text, const char* key, const int fallback) {
+  const std::string tag = std::string(key) + "=";
+  size_t at = text.find(tag);
+  while (at != std::string::npos && at > 0 && text[at - 1] != '\n') at = text.find(tag, at + 1);
+  if (at == std::string::npos) return fallback;
+  return std::atoi(text.c_str() + at + tag.size());
+}
 
 }  // namespace
 
@@ -153,13 +161,15 @@ void DaybookActivity::loadAll() {
   events_.clear();
   if (readText(kEventsPath, cal::kMaxFileBytes, text)) cal::parse(text, events_);
   if (readText(kSettingsPath, kSettingsBytes, text)) {
-    int first = firstDay_, weeks = weekNums_ ? 1 : 0, list = listMode_ ? 1 : 0;
-    std::sscanf(text.c_str(), "first=%d\nweeks=%d\nlist=%d", &first, &weeks, &list);
+    const int first = settingInt(text, "first", firstDay_);
     firstDay_ = (first == 0 || first == 6) ? first : 1;
-    weekNums_ = weeks != 0;
-    listMode_ = list != 0;
+    weekNums_ = settingInt(text, "weeks", weekNums_ ? 1 : 0) != 0;
+    listMode_ = settingInt(text, "list", listMode_ ? 1 : 0) != 0;
+    weekMode_ = settingInt(text, "grid", weekMode_ ? 1 : 0) != 0;
     wallpaper_ = daybook::wallpaperPath();
     agenda_ = daybook::agendaEnabled();
+    tomorrow_ = daybook::agendaTomorrow();
+    agendaBottom_ = daybook::agendaBottom();
   }
   tasks_.clear();
   lists_.clear();
@@ -174,9 +184,11 @@ bool DaybookActivity::saveTasks() { return writeText(kTasksPath, cal::serializeT
 bool DaybookActivity::saveLists() { return writeText(kListsPath, cal::serializeLists(lists_)); }
 
 void DaybookActivity::saveSettings() {
-  char buf[200];
-  std::snprintf(buf, sizeof buf, "first=%d\nweeks=%d\nlist=%d\nagenda=%d\nwall=%s\n", firstDay_, weekNums_ ? 1 : 0,
-                listMode_ ? 1 : 0, agenda_ ? 1 : 0, wallpaper_.c_str());
+  char buf[320];
+  std::snprintf(buf, sizeof buf,
+                "first=%d\nweeks=%d\nlist=%d\ngrid=%d\nagenda=%d\ntomorrow=%d\nbottom=%d\nwall=%s\n", firstDay_,
+                weekNums_ ? 1 : 0, listMode_ ? 1 : 0, weekMode_ ? 1 : 0, agenda_ ? 1 : 0, tomorrow_ ? 1 : 0,
+                agendaBottom_ ? 1 : 0, wallpaper_.c_str());
   writeText(kSettingsPath, buf);
 }
 
@@ -210,9 +222,13 @@ void DaybookActivity::changed() {
 void DaybookActivity::back() {
   switch (view_) {
     case View::Month:
+    case View::Week:
     case View::List:
       shelf::leave(renderer, mappedInput);
       return;
+    case View::Search:
+      view_ = home();
+      break;
     case View::Day:
       view_ = home();
       break;
@@ -258,11 +274,11 @@ void DaybookActivity::loop() {
   if (!hitsReady_.load()) return;
 
   const MappedInputManager::SwipeDir swipe = mappedInput.wasSwipe();
-  if (view_ == View::Month || view_ == View::List) {
+  if (view_ == View::Month || view_ == View::Week || view_ == View::List) {
     if (swipe == MappedInputManager::SwipeDir::Left) return route(Act::NextMonth, 0);
     if (swipe == MappedInputManager::SwipeDir::Right) return route(Act::PrevMonth, 0);
   }
-  if (view_ == View::Day || view_ == View::List || view_ == View::Todo) {
+  if (view_ == View::Day || view_ == View::List || view_ == View::Todo || view_ == View::Search) {
     if (swipe == MappedInputManager::SwipeDir::Up) return route(Act::PageNext, 0);
     if (swipe == MappedInputManager::SwipeDir::Down) return route(Act::PagePrev, 0);
   }
@@ -276,7 +292,8 @@ void DaybookActivity::loop() {
   // Buttons act when the finger goes DOWN, not when it lifts: that is the whole difference between a tap that
   // feels instant and one that feels late. On the screens that swipe (month, list, day, to-do) the rows and day
   // cells still wait for the lift, because a swipe starts on top of them; the buttons there act on the press.
-  const bool swipeScreen = view_ == View::Month || view_ == View::List || view_ == View::Day || view_ == View::Todo;
+  const bool swipeScreen = view_ == View::Month || view_ == View::Week || view_ == View::List || view_ == View::Day ||
+                           view_ == View::Todo || view_ == View::Search;
   int downX = 0;
   int downY = 0;
   if (mappedInput.wasScreenTouchPressed(downX, downY) && !HeaderBackTapTarget::contains(downX, downY)) {
@@ -322,10 +339,18 @@ void DaybookActivity::startDraft(const int index) {
 }
 
 void DaybookActivity::route(const Act act, const int32_t value) {
+  if (act == Act::Nop) return;
   message_.clear();
+  if (act == Act::Save || act == Act::ToggleTask) trash_ = Trash{};  // something new is saved: Undo is gone
   if (routeTodo(act, value)) return;
   switch (act) {
     case Act::PrevMonth:
+      if (view_ == View::Week) {  // a week at a time
+        selected_ -= 7;
+        openMonthOf(selected_);
+        page_ = 0;
+        break;
+      }
       if (--month_ < 1) {
         month_ = 12;
         --year_;
@@ -333,6 +358,12 @@ void DaybookActivity::route(const Act act, const int32_t value) {
       page_ = 0;
       break;
     case Act::NextMonth:
+      if (view_ == View::Week) {
+        selected_ += 7;
+        openMonthOf(selected_);
+        page_ = 0;
+        break;
+      }
       if (++month_ > 12) {
         month_ = 1;
         ++year_;
@@ -351,6 +382,36 @@ void DaybookActivity::route(const Act act, const int32_t value) {
       page_ = 0;
       saveSettings();
       break;
+    case Act::SetGrid:  // value 0 = month, 1 = week
+      if (value == 1 && view_ != View::Week) {  // the week of the selected day, if it is in the month on screen
+        const cal::Date d = cal::civilFromDays(selected_);
+        if (d.y != year_ || d.m != month_) {
+          const cal::Date t = cal::civilFromDays(today_);
+          selected_ = (clockKnown_ && t.y == year_ && t.m == month_) ? today_ : cal::daysFromCivil(year_, month_, 1);
+        }
+      } else if (value != 1 && view_ == View::Week) {
+        openMonthOf(selected_);
+      }
+      listMode_ = false;
+      weekMode_ = value == 1;
+      view_ = home();
+      page_ = 0;
+      saveSettings();
+      break;
+    case Act::OpenSearch:
+      search_.clear();
+      page_ = 0;
+      view_ = View::Search;
+      askSearch();
+      return;
+    case Act::EditSearch:
+      askSearch();
+      return;
+    case Act::Undo:
+      restoreTrash();
+      break;
+    case Act::Nop:
+      break;
     case Act::Settings:
       view_ = View::Settings;
       break;
@@ -366,7 +427,7 @@ void DaybookActivity::route(const Act act, const int32_t value) {
       view_ = View::Form;
       break;
     case Act::OpenEvent:
-      detailFrom_ = view_ == View::List ? View::List : View::Day;
+      detailFrom_ = (view_ == View::List || view_ == View::Week || view_ == View::Search) ? view_ : View::Day;
       detailIndex_ = value;
       confirmDelete_ = false;
       view_ = View::Detail;
@@ -383,6 +444,8 @@ void DaybookActivity::route(const Act act, const int32_t value) {
       break;
     case Act::ConfirmDelete:
       if (detailIndex_ >= 0 && detailIndex_ < static_cast<int>(events_.size())) {
+        discard(Trash::Kind::Event, detailIndex_, events_[static_cast<size_t>(detailIndex_)].title);
+        trash_.event = events_[static_cast<size_t>(detailIndex_)];
         events_.erase(events_.begin() + detailIndex_);
         if (!saveEvents()) message_ = "Card write failed";
       }
@@ -454,9 +517,13 @@ void DaybookActivity::route(const Act act, const int32_t value) {
       agenda_ = !agenda_;
       saveSettings();
       break;
-    case Act::InstallPlugin:
-      message_ = daybook::plugin::install();
-      if (message_.empty()) message_ = "Installed. Open File Transfer, then Plugins in the web page.";
+    case Act::ToggleTomorrow:
+      tomorrow_ = !tomorrow_;
+      saveSettings();
+      break;
+    case Act::TogglePosition:
+      agendaBottom_ = !agendaBottom_;
+      saveSettings();
       break;
     case Act::PickWallpaper:
       wallChoices_ = daybook::wallpaperChoices();
@@ -478,6 +545,7 @@ void DaybookActivity::route(const Act act, const int32_t value) {
     case Act::EditList:
     case Act::ListName:
     case Act::NewTask:
+    case Act::NewDayTask:
     case Act::EditTask:
     case Act::ToggleTask:
     case Act::TaskField:
@@ -518,6 +586,58 @@ void DaybookActivity::askText(const Field field) {
     else draft_.note = text;
   });
 }
+
+void DaybookActivity::askSearch() {
+  askString("FIND", search_, 40, [this](const std::string& text) {
+    search_ = text;
+    page_ = 0;
+  });
+}
+
+// Something was just deleted: remember where it was, so the Undo bar can put it back.
+void DaybookActivity::discard(const Trash::Kind kind, const int at, const std::string& label) {
+  trash_ = Trash{};
+  trash_.kind = kind;
+  trash_.at = at;
+  trash_.label = label;
+}
+
+void DaybookActivity::restoreTrash() {
+  switch (trash_.kind) {
+    case Trash::Kind::None:
+      return;
+    case Trash::Kind::Event:
+      if (events_.size() >= cal::kMaxEvents) {
+        message_ = "Calendar is full";
+        return;
+      }
+      events_.insert(events_.begin() + std::min<size_t>(static_cast<size_t>(trash_.at), events_.size()), trash_.event);
+      if (!saveEvents()) message_ = "Card write failed";
+      break;
+    case Trash::Kind::Task:
+      if (tasks_.size() >= cal::kMaxTasks) {
+        message_ = "To-Do list is full";
+        return;
+      }
+      tasks_.insert(tasks_.begin() + std::min<size_t>(static_cast<size_t>(trash_.at), tasks_.size()), trash_.task);
+      if (!saveTasks()) message_ = "Card write failed";
+      break;
+    case Trash::Kind::List:
+      if (lists_.size() >= cal::kMaxLists) {
+        message_ = "Lists are full";
+        return;
+      }
+      lists_.insert(lists_.begin() + std::min<size_t>(static_cast<size_t>(trash_.at), lists_.size()), trash_.list);
+      for (const cal::Task& t : trash_.tasks) {
+        if (tasks_.size() < cal::kMaxTasks) tasks_.push_back(t);
+      }
+      if (!saveLists() || !saveTasks()) message_ = "Card write failed";
+      break;
+  }
+  trash_ = Trash{};
+}
+
+cal::Day DaybookActivity::weekStart() const { return selected_ - ((cal::weekday(selected_) - firstDay_ + 7) % 7); }
 
 bool DaybookActivity::saveDraftAsTask() {
   if (tasks_.size() >= cal::kMaxTasks) {
@@ -669,19 +789,27 @@ int DaybookActivity::bottomBar(const int count, const char* const* labels, const
   return y;
 }
 
-// Two rows of small buttons: [To-Do's] [List view / Month view], then [Today] [Settings].
+// Two rows of small buttons: [Today] [M|W] [List view], then [To-Do's] [Find] [Settings]. The side buttons
+// are equal; the middle ones are smaller. M, W and List view are filled while that view is the one on screen.
 int DaybookActivity::homeBar() {
   const int sw = renderer.getScreenWidth();
   const int sh = renderer.getScreenHeight();
   const int bh = renderer.getLineHeight(kBoldSmall) + 18;
   const int gap = 8;
-  const int bw = (sw - 2 * kM - gap) / 2;
+  const int midW = 104;
+  const int sideW = (sw - 2 * kM - 2 * gap - midW) / 2;
+  const int midX = kM + sideW + gap;
+  const int rightX = midX + midW + gap;
   const int y2 = sh - bh - kM;
   const int y1 = y2 - bh - gap;
-  button(kM, y1, bw, bh, "To-Do's", Act::OpenTodo, 0, false, kBoldSmall);
-  button(kM + bw + gap, y1, bw, bh, listMode_ ? "Month view" : "List view", Act::ToggleList, 0, false, kBoldSmall);
-  button(kM, y2, bw, bh, "Today", Act::Today, 0, false, kBoldSmall);
-  button(kM + bw + gap, y2, bw, bh, "Settings", Act::Settings, 0, false, kBoldSmall);
+  const int half = (midW - 4) / 2;
+  button(kM, y1, sideW, bh, "Today", Act::Today, 0, false, kBoldSmall);
+  button(midX, y1, half, bh, "M", Act::SetGrid, 0, view_ == View::Month, kBoldSmall);
+  button(midX + midW - half, y1, half, bh, "W", Act::SetGrid, 1, view_ == View::Week, kBoldSmall);
+  button(rightX, y1, sideW, bh, "List view", Act::ToggleList, 0, listMode_, kBoldSmall);
+  button(kM, y2, sideW, bh, "To-Do's", Act::OpenTodo, 0, false, kBoldSmall);
+  button(midX, y2, midW, bh, "Find", Act::OpenSearch, 0, false, kBoldSmall);
+  button(rightX, y2, sideW, bh, "Settings", Act::Settings, 0, false, kBoldSmall);
   return y1;
 }
 
@@ -709,21 +837,20 @@ std::string DaybookActivity::repeatLabel(const cal::Event& ev) const {
 
 // --- Screens -----------------------------------------------------------------------------------
 
-int DaybookActivity::drawMonthNav() {
+int DaybookActivity::drawMonthNav(const std::string& title) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int sw = renderer.getScreenWidth();
   const int top = metrics.topPadding + 6;
   const int hh = renderer.getLineHeight(kBold) + 20;
   button(kM, top, 64, hh, "<", Act::PrevMonth);
   button(sw - kM - 64, top, 64, hh, ">", Act::NextMonth);
-  textBox(kBold, kM + 70, top, sw - 2 * kM - 140, hh, std::string(kMonthName[month_ - 1]) + " " + std::to_string(year_),
-          true);
+  textBox(kBold, kM + 70, top, sw - 2 * kM - 140, hh, title, true);
   return top + hh + 8;
 }
 
 void DaybookActivity::drawMonth() {
   const int sw = renderer.getScreenWidth();
-  int y = drawMonthNav();
+  int y = drawMonthNav(std::string(kMonthName[month_ - 1]) + " " + std::to_string(year_));
   const int barY = homeBar();
 
   const int wkW = weekNums_ ? 34 : 0;
@@ -781,6 +908,87 @@ void DaybookActivity::drawMonth() {
     }
   }
   drawDayStrip(y + weeks * ch + 8, barY - 8);
+}
+
+// A week as a column of days, each with its events and to-dos in small type. A tap on a day's name opens the
+// day; a tap on a row opens that event or to-do. When the week is busy every day gets the same number of rows
+// and says "+N more" for the rest, so the whole week always fits on one screen.
+void DaybookActivity::drawWeek() {
+  const int sw = renderer.getScreenWidth();
+  const cal::Day start = weekStart();
+  const cal::Date a = cal::civilFromDays(start);
+  const cal::Date b = cal::civilFromDays(start + 6);
+  char span[48];
+  if (a.y != b.y) {
+    std::snprintf(span, sizeof span, "%d %s %d - %d %s %d", a.d, kMonthShort[a.m - 1], a.y, b.d, kMonthShort[b.m - 1], b.y);
+  } else if (a.m != b.m) {
+    std::snprintf(span, sizeof span, "%d %s - %d %s %d", a.d, kMonthShort[a.m - 1], b.d, kMonthShort[b.m - 1], b.y);
+  } else {
+    std::snprintf(span, sizeof span, "%d - %d %s %d", a.d, b.d, kMonthShort[a.m - 1], a.y);
+  }
+  int y = drawMonthNav((weekNums_ ? "W" + std::to_string(cal::isoWeek(start + 3)) + "  " : std::string()) + span);
+  const int barY = homeBar();
+
+  std::vector<cal::Occurrence> occ[7];
+  std::vector<size_t> due[7];
+  size_t most = 0;
+  for (int d = 0; d < 7; ++d) {
+    cal::occurrencesOn(events_, start + d, occ[d]);
+    cal::tasksDueOn(tasks_, start + d, due[d]);
+    most = std::max(most, occ[d].size() + due[d].size());
+  }
+  const int hdrH = renderer.getLineHeight(kBoldSmall) + 8;
+  const int rowH = renderer.getLineHeight(kSmall) + 8;
+  const int avail = barY - 8 - y;
+  size_t cap = most;
+  for (; cap > 0; --cap) {  // the most rows a day may show while the whole week still fits
+    int need = 0;
+    for (int d = 0; d < 7; ++d) {
+      const size_t n = occ[d].size() + due[d].size();
+      need += hdrH + static_cast<int>(std::min(n, cap)) * rowH + (n > cap ? rowH : 0);
+    }
+    if (need <= avail) break;
+  }  // 0: no room for rows at all, so a day shows only how many it has
+  const int lw = renderer.getTextWidth(kSmall, twelveHour() ? "12:00 PM-12:00 PM" : "00:00-00:00") + 12;
+  for (int d = 0; d < 7; ++d) {
+    const cal::Day day = start + d;
+    const bool isToday = clockKnown_ && day == today_;
+    addHit(kM, y, sw - 2 * kM, hdrH, Act::PickDay, day);
+    if (isToday) {
+      renderer.fillRect(kM, y, sw - 2 * kM, hdrH, true);
+    } else {
+      renderer.drawLine(kM, y + hdrH - 2, sw - kM, y + hdrH - 2);
+    }
+    textBox(kBoldSmall, kM, y, sw - 2 * kM, hdrH, dayTitle(day, false), false, !isToday);
+    const size_t n = occ[d].size() + due[d].size();
+    if (cap == 0 && n > 0) {
+      const std::string count = std::to_string(n) + (n == 1 ? " item" : " items");
+      renderer.drawText(kSmall, sw - kM - 4 - renderer.getTextWidth(kSmall, count.c_str()),
+                        y + (hdrH - renderer.getLineHeight(kSmall)) / 2, count.c_str(), !isToday);
+    }
+    y += hdrH;
+    for (size_t i = 0; i < std::min(n, cap); ++i) {
+      if (i < occ[d].size()) {
+        const cal::Occurrence& o = occ[d][i];
+        const cal::Event& ev = events_[o.event];
+        textBox(kSmall, kM, y, lw, rowH, shortWhen(ev, o, twelveHour()), false);
+        textBox(kBoldSmall, kM + lw, y, sw - 2 * kM - lw, rowH, ev.title, false);
+        addHit(kM, y, sw - 2 * kM, rowH, Act::OpenEvent, static_cast<int32_t>(o.event));
+      } else {
+        const size_t ti = due[d][i - occ[d].size()];
+        const cal::Task& t = tasks_[ti];
+        drawCheck(kM + 4, y + 4, rowH - 8, t.done, true);
+        textBox(kBoldSmall, kM + lw, y, sw - 2 * kM - lw, rowH, t.title, false);
+        addHit(kM, y, sw - 2 * kM, rowH, Act::EditTask, static_cast<int32_t>(ti));
+        addHit(kM, y, 40, rowH, Act::ToggleTask, static_cast<int32_t>(ti));  // the tick box ticks it
+      }
+      y += rowH;
+    }
+    if (n > cap) {
+      textBox(kSmall, kM, y, sw - 2 * kM, rowH, "+ " + std::to_string(n - cap) + " more", false);
+      y += rowH;
+    }
+  }
 }
 
 // The selected day under the month grid: one line per event or task, tap to open the day.
@@ -1030,13 +1238,13 @@ void DaybookActivity::drawDay() {
   }
 
   if (pages_ > 1) {
-    const char* labels[3] = {"Prev", "+ Event", "Next"};
-    const Act acts[3] = {Act::PagePrev, Act::AddEvent, Act::PageNext};
-    bottomBar(3, labels, acts);
+    const char* labels[4] = {"Prev", "+ Event", "+ To-Do", "Next"};
+    const Act acts[4] = {Act::PagePrev, Act::AddEvent, Act::NewDayTask, Act::PageNext};
+    bottomBar(4, labels, acts);
   } else {
-    const char* labels[1] = {"+ Event"};
-    const Act acts[1] = {Act::AddEvent};
-    bottomBar(1, labels, acts);
+    const char* labels[2] = {"+ Event", "+ To-Do"};
+    const Act acts[2] = {Act::AddEvent, Act::NewDayTask};
+    bottomBar(2, labels, acts);
   }
 }
 
@@ -1269,24 +1477,18 @@ void DaybookActivity::drawSettings() {
   row("First day of week", firstDay_ == 1 ? "Monday" : (firstDay_ == 0 ? "Sunday" : "Saturday"), Act::SetFirstDay);
   row("Week numbers", weekNums_ ? "On" : "Off", Act::ToggleWeek);
   row("Agenda on the sleep screen", agenda_ ? "On" : "Off", Act::ToggleAgenda);
+  row("Agenda shows", tomorrow_ ? "Today + tomorrow" : "Today only", Act::ToggleTomorrow);
+  row("Agenda position", agendaBottom_ ? "Bottom" : "Top", Act::TogglePosition);
   {
     // The name after the last '/', so "/sleepscreen/forest.bmp" reads "forest.bmp".
     const size_t slash = wallpaper_.rfind('/');
     row("Sleep wallpaper", wallpaper_.empty() ? std::string("Default (/sleep.bmp)") : wallpaper_.substr(slash + 1),
         Act::PickWallpaper);
   }
-  {
-    const daybook::plugin::State ps = daybook::plugin::state();
-    row("Web page for phone or PC (plugin)", ps == daybook::plugin::State::Missing ? "Install" : (ps == daybook::plugin::State::Outdated ? "Update" : "Installed"),
-        Act::InstallPlugin);
-  }
   y += 6;
-  std::string note = "The agenda shows when Sleep screen is set to Custom. Clock format follows System settings.";
-  if (!message_.empty()) {
-    note = message_;
-  } else if (daybook::plugin::state() != daybook::plugin::State::Missing && !daybook::plugin::pluginsEnabled()) {
-    note = "The web page needs Settings > Connectivity > Plugins turned on.";
-  }
+  const std::string note =
+      message_.empty() ? "The agenda shows when Sleep screen is set to Custom. Clock format follows System settings."
+                       : message_;
   for (const std::string& line : renderer.wrappedText(kSmall, note.c_str(), sw - 2 * kM, 4)) {
     renderer.drawText(kSmall, kM, y, line.c_str(), true);
     y += renderer.getLineHeight(kSmall) + 2;
@@ -1336,6 +1538,130 @@ void DaybookActivity::drawWallpapers() {
   }
 }
 
+// Find: events and to-dos whose name, place or note holds every word typed. Soonest first, then what is behind
+// us; to-dos that are done come last. A tap opens the event or to-do.
+void DaybookActivity::drawSearch() {
+  const int sw = renderer.getScreenWidth();
+  const int sh = renderer.getScreenHeight();
+
+  struct Found {
+    int group;     // 0 coming up or open, 1 open with no day, 2 over or done
+    cal::Day day;  // sort key within the group
+    bool isEvent;
+    size_t idx;    // into events_ or tasks_
+    cal::Day shown;
+  };
+  std::vector<Found> found;
+  const std::string key = cal::searchKey(search_);
+  if (!key.empty()) {
+    constexpr size_t kCap = 80;
+    size_t nEv = 0;
+    for (size_t i = 0; i < events_.size() && nEv < kCap; ++i) {
+      if (!cal::matchesQuery(events_[i], key)) continue;
+      ++nEv;
+      std::vector<cal::Event> one{events_[i]};
+      std::vector<cal::Occurrence> part;
+      cal::occurrencesIn(one, today_, today_ + 400, part);
+      if (part.empty()) {
+        found.push_back(Found{2, -events_[i].start, true, i, events_[i].start});
+      } else {
+        cal::Day next = part[0].start;
+        for (const cal::Occurrence& o : part) next = std::min(next, std::max(o.start, today_));
+        found.push_back(Found{0, next, true, i, next});
+      }
+    }
+    size_t nTask = 0;
+    for (size_t i = 0; i < tasks_.size() && nTask < kCap; ++i) {
+      const cal::Task& t = tasks_[i];
+      if (!cal::matchesQuery(t, key)) continue;
+      ++nTask;
+      if (t.done) found.push_back(Found{2, -t.doneOn, false, i, t.doneOn});
+      else if (t.hasDue) found.push_back(Found{0, t.due, false, i, t.due});
+      else found.push_back(Found{1, 0, false, i, 0});
+    }
+    std::stable_sort(found.begin(), found.end(), [](const Found& a, const Found& b) {
+      if (a.group != b.group) return a.group < b.group;
+      if (a.day != b.day) return a.day < b.day;
+      return a.isEvent && !b.isEvent;
+    });
+  }
+
+  int y = drawHeader("Find", key.empty() ? std::string() : std::to_string(found.size()) + " found");
+  const int qh = renderer.getLineHeight(kBody) + 22;
+  rowBox(kM, y, sw - 2 * kM, qh, Act::EditSearch, 0, search_.empty() ? "tap to type" : search_);
+  y += qh + 10;
+
+  const int evH = renderer.getLineHeight(kBold) + 16;
+  const int pagerH = renderer.getLineHeight(kBoldSmall) + 18;
+  const int bottom = sh - kM;
+  int perPage = std::max(1, (bottom - y) / evH);
+  if (static_cast<int>(found.size()) > perPage) perPage = std::max(1, (bottom - y - pagerH - 6) / evH);
+  pages_ = std::max(1, (static_cast<int>(found.size()) + perPage - 1) / perPage);
+  page_ = std::clamp(page_, 0, pages_ - 1);
+
+  if (key.empty()) {
+    textBox(kSmall, 0, y + 20, sw, evH, "Type a word to find events and to-dos", true);
+  } else if (found.empty()) {
+    textBox(kBody, 0, y + 20, sw, evH, "No matches", true);
+  }
+  const int lw = renderer.getTextWidth(kSmall, "00 Mmm 0000") + 12;
+  for (int i = 0; i < perPage; ++i) {
+    const size_t at = static_cast<size_t>(page_ * perPage + i);
+    if (at >= found.size()) break;
+    const Found& f = found[at];
+    const int ry = y + i * evH;
+    if (f.isEvent) {
+      const cal::Event& ev = events_[f.idx];
+      renderer.drawRect(kM, ry, sw - 2 * kM, evH - 4, true);
+      textBox(kSmall, kM + 4, ry, lw, evH - 4, shortDate(f.shown), false);
+      textBox(kBold, kM + 4 + lw, ry, sw - 2 * kM - 4 - lw, evH - 4, ev.title, false);
+      addHit(kM, ry, sw - 2 * kM, evH - 4, Act::OpenEvent, static_cast<int32_t>(f.idx));
+    } else {
+      const cal::Task& t = tasks_[f.idx];
+      const bool late = cal::isOverdue(t, today_);
+      std::string when;  // "due 24 Nov", "27 Nov" or "done 26 Nov", then the list, together in the corner
+      if (t.done) when = "done " + shortDate(t.doneOn);
+      else if (t.hasDue) when = (late ? "due " : "") + shortDate(t.due);
+      taskRow(ry, evH - 4, f.idx, late, false, "", when.empty() ? listName(t.list) : when + " - " + listName(t.list));
+    }
+  }
+  if (pages_ > 1) {
+    const int py = sh - kM - pagerH;
+    const int pw = 120;
+    button(kM, py, pw, pagerH, "Prev", Act::PagePrev, 0, false, kBoldSmall);
+    button(sw - kM - pw, py, pw, pagerH, "Next", Act::PageNext, 0, false, kBoldSmall);
+    textBox(kBoldSmall, kM + pw, py, sw - 2 * kM - 2 * pw, pagerH,
+            std::to_string(page_ + 1) + "/" + std::to_string(pages_), true);
+  }
+}
+
+// "Deleted: Dentist  [Undo]": a bar over the bottom of the screen after a delete, until something else is saved.
+void DaybookActivity::drawUndo() {
+  if (trash_.kind == Trash::Kind::None) return;
+  const bool homeView = view_ == View::Month || view_ == View::Week || view_ == View::List;
+  if (!homeView && view_ != View::Day && view_ != View::Todo && view_ != View::Lists && view_ != View::Search) return;
+  const int sw = renderer.getScreenWidth();
+  const int sh = renderer.getScreenHeight();
+  const int lhBS = renderer.getLineHeight(kBoldSmall);
+  const int barH = lhBS + 18;
+  int top;  // the top of whatever sits along the bottom of this screen
+  if (homeView) {
+    top = sh - 2 * (lhBS + 18) - kM - 8;
+  } else if (view_ == View::Search) {
+    top = sh - kM;
+  } else {
+    top = sh - (renderer.getLineHeight(kBold) + 26) - kM;
+  }
+  int y = top - 6 - barH;
+  if ((view_ == View::List || view_ == View::Todo || view_ == View::Search) && pages_ > 1) y -= lhBS + 18 + 6;
+  const int bw = 90;
+  renderer.fillRect(kM, y, sw - 2 * kM, barH, false);
+  renderer.drawRect(kM, y, sw - 2 * kM, barH, 2, true);
+  addHit(kM, y, sw - 2 * kM, barH, Act::Nop);  // a tap on the bar must not reach what is under it
+  textBox(kBoldSmall, kM + 4, y, sw - 2 * kM - bw - 12, barH, "Deleted: " + trash_.label, false);
+  button(sw - kM - bw - 4, y + 3, bw, barH - 6, "Undo", Act::Undo, 0, true, kBoldSmall);
+}
+
 void DaybookActivity::render(RenderLock&&) {
   // After deep sleep the clock can still be unset when the app reopens; pick it up as soon as it is
   // there, and roll "today" over at midnight.
@@ -1350,6 +1676,12 @@ void DaybookActivity::render(RenderLock&&) {
   switch (view_) {
     case View::Month:
       drawMonth();
+      break;
+    case View::Week:
+      drawWeek();
+      break;
+    case View::Search:
+      drawSearch();
       break;
     case View::List:
       drawList();
@@ -1382,6 +1714,7 @@ void DaybookActivity::render(RenderLock&&) {
       drawWallpapers();
       break;
   }
+  drawUndo();
   hitsReady_ = true;
   renderer.displayBuffer();
 }

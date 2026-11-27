@@ -158,4 +158,64 @@ void overdueTasks(const std::vector<Task>& tasks, Day today, std::vector<size_t>
 // (first + i); bit i of `open` when one of them is not done. 42 days.
 void taskBusy(const std::vector<Task>& tasks, Day first, uint64_t& any, uint64_t& open);
 
+// --- Search -------------------------------------------------------------------
+//
+// Matching ignores case and accents: "arvizturo" finds "Arvizturo", "ARVIZTURO" and the
+// Hungarian spelling with accents. Several words must all appear (in any order).
+
+// Lower case, accents dropped (Latin-1 letters and the Hungarian double acute o and u), for matching only.
+std::string searchKey(const std::string& text);
+// True when every word of `key` (already a searchKey) is somewhere in the event's title, place or note.
+bool matchesQuery(const Event& event, const std::string& key);
+// The same for a task's title and note.
+bool matchesQuery(const Task& task, const std::string& key);
+
+// --- Sleep-screen agenda --------------------------------------------------------
+//
+// What the sleep screen shows: today's events that are not over yet, today's open to-dos, a count of
+// overdue ones, and (optionally) tomorrow's events and to-dos. The planner below fits it in a given
+// height, so the layout is tested on the host; the drawing is the only part left on the device.
+
+enum class AgendaKind : uint8_t { Event, Task };
+struct AgendaItem {
+  AgendaKind kind = AgendaKind::Event;
+  std::string text;  // "09:30  Dentist" or the task's title; already folded for display
+};
+struct Agenda {
+  std::vector<AgendaItem> today;     // events not over yet, then open tasks due today
+  std::vector<AgendaItem> tomorrow;  // events, then open tasks due tomorrow
+  size_t overdue = 0;                // open tasks past their due day
+  bool pastEvents = false;           // some of today's events are already over (and hidden)
+};
+
+// A timed event is over at its end time; with no end time, an hour after it starts. A multi-day one
+// that began earlier runs to its end time on the last day. All-day events are never over before midnight.
+bool eventOver(const Event& event, const Occurrence& occurrence, Day today, int nowMinutes);
+Agenda buildAgenda(const std::vector<Event>& events, const std::vector<Task>& tasks, Day today, int nowMinutes,
+                   bool twelveHour);
+
+enum class AgendaStyle : uint8_t {
+  Section,      // "EVENTS", "TO-DO TODAY": bold, small
+  Item,         // an event or to-do of today: body font
+  Strong,       // "2 overdue": bold body font
+  Rule,         // a thin line between today and tomorrow
+  TomSection,   // "TOMORROW  Sat 28 Nov": bold, small
+  TomItem,      // tomorrow's rows: small font
+  More,         // "+3 more": small font
+};
+struct AgendaLine {
+  AgendaStyle style = AgendaStyle::Item;
+  std::string text;
+};
+struct AgendaMetrics {  // pixel heights of one line of each style, and the height there is to fill
+  int section = 0, item = 0, strong = 0, rule = 0, tomSection = 0, tomItem = 0, more = 0;
+  int avail = 0;
+};
+// The lines to draw, top to bottom, whose heights add up to at most `avail`. In the evening (late
+// enough that tomorrow is what matters) tomorrow gets up to 8 rows and today at most 4; otherwise
+// tomorrow gets up to 4 and today the rest of the room.
+std::vector<AgendaLine> layoutAgenda(const Agenda& agenda, const AgendaMetrics& metrics, const std::string& tomorrowTitle,
+                                     bool evening);
+constexpr int kEveningMinute = 21 * 60;
+
 }  // namespace daybook

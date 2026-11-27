@@ -528,4 +528,218 @@ std::string capitalizeFirst(const std::string& text) {
   return out;
 }
 
+// --- Search -------------------------------------------------------------------
+
+std::string searchKey(const std::string& text) {
+  std::string out;
+  out.reserve(text.size());
+  for (size_t i = 0; i < text.size(); ++i) {
+    const auto b0 = static_cast<uint8_t>(text[i]);
+    if (b0 >= 'A' && b0 <= 'Z') {
+      out += static_cast<char>(b0 + 32);
+    } else if (b0 == 0xC3 && i + 1 < text.size()) {  // Latin-1: U+00C0..U+00FF
+      const auto b1 = static_cast<uint8_t>(text[++i]);
+      unsigned cp = 0xC0u + (b1 - 0x80u);
+      if (cp >= 0xC0 && cp <= 0xDE && cp != 0xD7) cp += 0x20;  // lower case
+      char base = 0;
+      if (cp >= 0xE0 && cp <= 0xE5) base = 'a';
+      else if (cp == 0xE7) base = 'c';
+      else if (cp >= 0xE8 && cp <= 0xEB) base = 'e';
+      else if (cp >= 0xEC && cp <= 0xEF) base = 'i';
+      else if (cp == 0xF1) base = 'n';
+      else if ((cp >= 0xF2 && cp <= 0xF6) || cp == 0xF8) base = 'o';
+      else if (cp >= 0xF9 && cp <= 0xFC) base = 'u';
+      else if (cp == 0xFD || cp == 0xFF) base = 'y';
+      if (base != 0) {
+        out += base;
+      } else {
+        out += static_cast<char>(0xC3);
+        out += static_cast<char>(0x80 + (cp - 0xC0));
+      }
+    } else if (b0 == 0xC5 && i + 1 < text.size()) {  // o and u with double acute
+      const auto b1 = static_cast<uint8_t>(text[++i]);
+      if (b1 == 0x90 || b1 == 0x91) out += 'o';
+      else if (b1 == 0xB0 || b1 == 0xB1) out += 'u';
+      else {
+        out += static_cast<char>(b0);
+        out += static_cast<char>(b1);
+      }
+    } else {
+      out += static_cast<char>(b0);
+    }
+  }
+  return out;
+}
+
+namespace {
+// Every space-separated word of `key` is somewhere in `hay` (both already searchKeys).
+bool hasAllWords(const std::string& hay, const std::string& key) {
+  size_t i = 0;
+  bool any = false;
+  while (i < key.size()) {
+    const size_t e = key.find(' ', i);
+    const size_t end = e == std::string::npos ? key.size() : e;
+    if (end > i) {
+      any = true;
+      if (hay.find(key.substr(i, end - i)) == std::string::npos) return false;
+    }
+    i = end + 1;
+  }
+  return any;
+}
+}  // namespace
+
+bool matchesQuery(const Event& event, const std::string& key) {
+  return hasAllWords(searchKey(event.title + " " + event.location + " " + event.note), key);
+}
+
+bool matchesQuery(const Task& task, const std::string& key) {
+  return hasAllWords(searchKey(task.title + " " + task.note), key);
+}
+
+// --- Sleep-screen agenda --------------------------------------------------------
+
+bool eventOver(const Event& event, const Occurrence& occurrence, const Day today, const int nowMinutes) {
+  if (event.allDay || occurrence.end > today) return false;
+  int endMinute = 24 * 60;
+  if (occurrence.start < today) {  // the last day of one that began earlier
+    if (event.endMin > 0) endMinute = event.endMin;
+  } else {
+    endMinute = event.endMin > event.startMin ? event.endMin : event.startMin + 60;
+  }
+  return nowMinutes >= endMinute;
+}
+
+namespace {
+std::string agendaWhen(const Event& e, const Occurrence& o, const Day day, const bool twelveHour) {
+  if (e.allDay) return "All day";
+  if (o.start < day) {  // a multi-day event already under way
+    if (o.end == day && e.endMin > 0) return "until " + formatMinutes(e.endMin, twelveHour);
+    return "All day";
+  }
+  return formatMinutes(e.startMin, twelveHour);
+}
+}  // namespace
+
+Agenda buildAgenda(const std::vector<Event>& events, const std::vector<Task>& tasks, const Day today,
+                   const int nowMinutes, const bool twelveHour) {
+  Agenda a;
+  std::vector<Occurrence> occ;
+  occurrencesOn(events, today, occ);
+  for (const Occurrence& o : occ) {
+    const Event& e = events[o.event];
+    if (eventOver(e, o, today, nowMinutes)) {
+      a.pastEvents = true;
+      continue;
+    }
+    a.today.push_back({AgendaKind::Event, agendaWhen(e, o, today, twelveHour) + "  " + foldForDisplay(e.title)});
+  }
+  std::vector<size_t> ix;
+  tasksDueOn(tasks, today, ix);
+  for (const size_t i : ix) {
+    if (!tasks[i].done) a.today.push_back({AgendaKind::Task, foldForDisplay(tasks[i].title)});
+  }
+  overdueTasks(tasks, today, ix);
+  a.overdue = ix.size();
+
+  occurrencesOn(events, today + 1, occ);
+  for (const Occurrence& o : occ) {
+    const Event& e = events[o.event];
+    a.tomorrow.push_back({AgendaKind::Event, agendaWhen(e, o, today + 1, twelveHour) + "  " + foldForDisplay(e.title)});
+  }
+  tasksDueOn(tasks, today + 1, ix);
+  for (const size_t i : ix) {
+    if (!tasks[i].done) a.tomorrow.push_back({AgendaKind::Task, foldForDisplay(tasks[i].title)});
+  }
+  return a;
+}
+
+namespace {
+int lineHeight(const AgendaMetrics& m, const AgendaStyle s) {
+  switch (s) {
+    case AgendaStyle::Section:
+      return m.section;
+    case AgendaStyle::Item:
+      return m.item;
+    case AgendaStyle::Strong:
+      return m.strong;
+    case AgendaStyle::Rule:
+      return m.rule;
+    case AgendaStyle::TomSection:
+      return m.tomSection;
+    case AgendaStyle::TomItem:
+      return m.tomItem;
+    case AgendaStyle::More:
+      return m.more;
+  }
+  return 0;
+}
+}  // namespace
+
+std::vector<AgendaLine> layoutAgenda(const Agenda& agenda, const AgendaMetrics& m, const std::string& tomorrowTitle,
+                                     const bool evening) {
+  // Tomorrow's block first: its height comes off what today may use.
+  std::vector<AgendaLine> tom;
+  if (!agenda.tomorrow.empty()) {
+    const size_t cap = evening ? 8 : 4;
+    size_t n = std::min(agenda.tomorrow.size(), cap);
+    const int fixed = m.rule + m.tomSection;
+    const int minToday = m.strong + m.section + m.item + m.more;  // today keeps room for a heading and a row
+    const auto height = [&](const size_t rows) {
+      return fixed + static_cast<int>(rows) * m.tomItem + (agenda.tomorrow.size() > rows ? m.more : 0);
+    };
+    while (n > 0 && height(n) > m.avail - minToday) --n;
+    if (n > 0) {
+      tom.push_back({AgendaStyle::Rule, ""});
+      tom.push_back({AgendaStyle::TomSection, tomorrowTitle});
+      for (size_t i = 0; i < n; ++i) tom.push_back({AgendaStyle::TomItem, agenda.tomorrow[i].text});
+      if (agenda.tomorrow.size() > n) tom.push_back({AgendaStyle::More, "+" + std::to_string(agenda.tomorrow.size() - n) + " more"});
+    }
+  }
+  int tomH = 0;
+  for (const AgendaLine& l : tom) tomH += lineHeight(m, l.style);
+
+  // Today's rows, in order; section headings are kept with the row after them.
+  std::vector<AgendaLine> rows;
+  size_t firstTask = 0;
+  while (firstTask < agenda.today.size() && agenda.today[firstTask].kind == AgendaKind::Event) ++firstTask;
+  if (agenda.overdue > 0) rows.push_back({AgendaStyle::Strong, std::to_string(agenda.overdue) + " overdue"});
+  if (firstTask > 0) rows.push_back({AgendaStyle::Section, "EVENTS"});
+  for (size_t i = 0; i < firstTask; ++i) rows.push_back({AgendaStyle::Item, agenda.today[i].text});
+  if (firstTask < agenda.today.size()) rows.push_back({AgendaStyle::Section, "TO-DO TODAY"});
+  for (size_t i = firstTask; i < agenda.today.size(); ++i) rows.push_back({AgendaStyle::Item, agenda.today[i].text});
+  if (agenda.today.empty()) {
+    rows.push_back({AgendaStyle::Item, agenda.pastEvents ? "Nothing more today" : "Nothing planned"});
+  }
+
+  const int room = m.avail - tomH;
+  const size_t itemCap = evening ? 4 : agenda.today.size() + 1;
+  std::vector<AgendaLine> out;
+  int used = 0;
+  size_t items = 0;
+  size_t shown = 0;
+  for (; shown < rows.size(); ++shown) {
+    const AgendaLine& r = rows[shown];
+    const bool heading = r.style == AgendaStyle::Section;
+    const bool counts = r.style == AgendaStyle::Item && !agenda.today.empty();
+    int need = lineHeight(m, r.style);
+    if (heading && shown + 1 < rows.size()) need += lineHeight(m, rows[shown + 1].style);
+    const bool last = shown + (heading ? 2 : 1) >= rows.size();
+    const int reserve = last ? 0 : m.more;  // keep room for "+N more" while rows remain
+    const bool force = shown == 0 || (shown == 1 && rows[0].style == AgendaStyle::Section);  // never show nothing
+    if (!force && used + need + reserve > room) break;
+    if ((heading || counts) && items >= itemCap) break;
+    used += lineHeight(m, r.style);
+    if (counts) ++items;
+    out.push_back(r);
+  }
+  size_t hidden = 0;
+  for (size_t i = shown; i < rows.size(); ++i) {
+    if (rows[i].style == AgendaStyle::Item) ++hidden;
+  }
+  if (hidden > 0) out.push_back({AgendaStyle::More, "+" + std::to_string(hidden) + " more"});
+  for (const AgendaLine& l : tom) out.push_back(l);
+  return out;
+}
+
 }  // namespace daybook

@@ -39,7 +39,21 @@ class DaybookActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
-  enum class View : uint8_t { Month, List, Day, Detail, Form, Settings, Todo, Lists, TaskForm, ListForm, Wallpapers };
+  enum class View : uint8_t {
+    Month,
+    Week,
+    List,
+    Day,
+    Detail,
+    Form,
+    Settings,
+    Todo,
+    Lists,
+    TaskForm,
+    ListForm,
+    Wallpapers,
+    Search,
+  };
   enum class Act : uint8_t {
     PrevMonth,
     NextMonth,
@@ -64,7 +78,14 @@ class DaybookActivity final : public Activity {
     PickWallpaper,
     SetWallpaper,
     ToggleAgenda,
-    InstallPlugin,
+    ToggleTomorrow,
+    TogglePosition,
+    SetGrid,
+    NewDayTask,
+    Undo,
+    OpenSearch,
+    EditSearch,
+    Nop,
     Back,
     OpenLists,
     SelectList,
@@ -113,9 +134,24 @@ class DaybookActivity final : public Activity {
   int firstDay_ = 1;  // 0 Sunday, 1 Monday, 6 Saturday
   bool weekNums_ = true;
   bool agenda_ = false;    // draw today's agenda on the sleep screen
+  bool tomorrow_ = true;   // ...with tomorrow under it
+  bool agendaBottom_ = false;  // ...at the bottom of the screen
   std::vector<std::string> wallChoices_;  // the .bmp files on the card, while the picker is open
   std::string wallpaper_;  // sleep wallpaper path; "" = the default
-  bool listMode_ = false;  // the home screen: false = month grid, true = the upcoming list
+  bool listMode_ = false;  // the home screen: the upcoming list...
+  bool weekMode_ = false;  // ...or else a week (true) or a month (false) grid
+  std::string search_;     // the Find screen's words
+
+  // The last thing deleted, kept until something else is saved so the Undo bar can bring it back.
+  struct Trash {
+    enum class Kind : uint8_t { None, Event, Task, List } kind = Kind::None;
+    int at = 0;  // where it sat in its list
+    daybook::Event event;
+    daybook::Task task;
+    daybook::TaskList list;
+    std::vector<daybook::Task> tasks;  // a deleted list's tasks
+    std::string label;
+  } trash_;
   View detailFrom_ = View::Day;  // where Back from an event goes
   View formFrom_ = View::Day;    // where Cancel from a new event goes
   View taskFrom_ = View::Todo;   // where Back from a task goes
@@ -145,6 +181,10 @@ class DaybookActivity final : public Activity {
   bool saveLists();
   void saveSettings();
   void drawWallpapers();
+  void restoreTrash();
+  void askSearch();
+  void discard(Trash::Kind kind, int at, const std::string& label);  // starts a fresh Trash
+  daybook::Day weekStart() const;
   void refreshToday();
   void back();
   const Hit* hitAt(int x, int y) const;  // the top-most hit under a point, or null
@@ -176,9 +216,12 @@ class DaybookActivity final : public Activity {
   int drawHeader(const std::string& title, const std::string& right, int fontId = -1);
   int bottomBar(int count, const char* const* labels, const Act* acts);
   int homeBar();  // the two small button rows of the month and list screens; returns their top
-  View home() const { return listMode_ ? View::List : View::Month; }
-  int drawMonthNav();  // "< Month Year >" row; returns the y just below it
+  View home() const { return listMode_ ? View::List : (weekMode_ ? View::Week : View::Month); }
+  int drawMonthNav(const std::string& title);  // "< title >" row; returns the y just below it
   void drawMonth();
+  void drawWeek();
+  void drawSearch();
+  void drawUndo();
   void drawList();
   void drawDayStrip(int y0, int y1);
   void drawDay();
