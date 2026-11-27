@@ -20,7 +20,7 @@ Limits: 400 events, 500 to-dos, 14 lists; dates 1970 to 2200 (the form will not 
 
 ## Where the data lives
 
-`/.crosspoint/daybook/` on the card (an older `/.crosspoint/calendar/` is copied over once): `events.txt`, `tasks.txt`, `lists.txt`, `settings.txt`. Plain text, one record
+`/.crosspoint/daybook/` on the card: `events.txt`, `tasks.txt`, `lists.txt`, `settings.txt`. Plain text, one record
 per line, tab separated, first line `V1`. A ticked to-do has its tick time as an extra last column; files from before
 that column still load. Every write goes to a `.tmp` file that is then renamed over the real one, so a
 power cut leaves the old file, never half of a new one. Bad lines are skipped, never fatal.
