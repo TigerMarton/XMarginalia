@@ -250,26 +250,4 @@ bool agendaBottom() {
   return readText(kSettingsPath, 512, text) && settingValue(text, "bottom") == "1";
 }
 
-std::string wallpaperPath() {
-  std::string text;
-  if (!readText(kSettingsPath, 512, text)) return {};
-  return settingValue(text, "wall");
-}
-
-std::vector<std::string> wallpaperChoices() {
-  std::vector<std::string> out;
-  for (const char* dir : {"/", "/sleepscreen", "/sleep", "/.sleep", "/wallpapers"}) {
-    for (const auto& name : Storage.listFiles(dir, 120)) {
-      const std::string n(name.c_str());
-      if (n.empty() || n[0] == '.' || !FsHelpers::hasBmpExtension(n)) continue;
-      const std::string full = (dir[1] == '\0' ? std::string("/") : std::string(dir) + "/") + n;
-      if (full.size() > 120) continue;
-      out.push_back(full);
-      if (out.size() >= 60) break;
-    }
-  }
-  std::sort(out.begin(), out.end());
-  return out;
-}
-
 }  // namespace daybook

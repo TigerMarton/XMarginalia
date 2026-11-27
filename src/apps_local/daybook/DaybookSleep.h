@@ -22,12 +22,4 @@ int agendaSize();
 // The panel sits at the bottom of the screen instead of the top.
 bool agendaBottom();
 
-// The wallpaper chosen in Daybook > Settings, or "" for the default
-// (/sleep.bmp, then the sleep folders). Read from the settings file.
-std::string wallpaperPath();
-
-// Every .bmp the picker offers: the SD root, /sleepscreen, /sleep, /.sleep and
-// /wallpapers. Full paths, sorted, at most 60.
-std::vector<std::string> wallpaperChoices();
-
 }  // namespace daybook

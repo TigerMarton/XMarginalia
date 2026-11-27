@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 #include <cstring>
 #include <ctime>
 #include <variant>
@@ -166,7 +167,6 @@ void DaybookActivity::loadAll() {
     weekNums_ = settingInt(text, "weeks", weekNums_ ? 1 : 0) != 0;
     listMode_ = settingInt(text, "list", listMode_ ? 1 : 0) != 0;
     weekMode_ = settingInt(text, "grid", weekMode_ ? 1 : 0) != 0;
-    wallpaper_ = daybook::wallpaperPath();
     agenda_ = daybook::agendaEnabled();
     agendaSize_ = daybook::agendaSize();
     tomorrow_ = daybook::agendaTomorrow();
@@ -187,9 +187,9 @@ bool DaybookActivity::saveLists() { return writeText(kListsPath, cal::serializeL
 void DaybookActivity::saveSettings() {
   char buf[320];
   std::snprintf(buf, sizeof buf,
-                "first=%d\nweeks=%d\nlist=%d\ngrid=%d\nagenda=%d\nsize=%d\ntomorrow=%d\nbottom=%d\nwall=%s\n",
+                "first=%d\nweeks=%d\nlist=%d\ngrid=%d\nagenda=%d\nsize=%d\ntomorrow=%d\nbottom=%d\n",
                 firstDay_, weekNums_ ? 1 : 0, listMode_ ? 1 : 0, weekMode_ ? 1 : 0, agenda_ ? 1 : 0, agendaSize_,
-                tomorrow_ ? 1 : 0, agendaBottom_ ? 1 : 0, wallpaper_.c_str());
+                tomorrow_ ? 1 : 0, agendaBottom_ ? 1 : 0);
   writeText(kSettingsPath, buf);
 }
 
@@ -258,10 +258,6 @@ void DaybookActivity::back() {
       confirmDelete_ = false;
       view_ = View::Lists;
       break;
-    case View::Wallpapers:
-      wallChoices_.clear();
-      view_ = View::Settings;
-      break;
   }
   changed();
 }
@@ -279,7 +275,8 @@ void DaybookActivity::loop() {
     if (swipe == MappedInputManager::SwipeDir::Left) return route(Act::NextMonth, 0);
     if (swipe == MappedInputManager::SwipeDir::Right) return route(Act::PrevMonth, 0);
   }
-  if (view_ == View::Day || view_ == View::List || view_ == View::Todo || view_ == View::Search) {
+  if (view_ == View::Day || view_ == View::List || view_ == View::Todo || view_ == View::Search ||
+      view_ == View::Settings) {
     if (swipe == MappedInputManager::SwipeDir::Up) return route(Act::PageNext, 0);
     if (swipe == MappedInputManager::SwipeDir::Down) return route(Act::PagePrev, 0);
   }
@@ -414,6 +411,7 @@ void DaybookActivity::route(const Act act, const int32_t value) {
     case Act::Nop:
       break;
     case Act::Settings:
+      page_ = 0;
       view_ = View::Settings;
       break;
     case Act::PickDay:
@@ -529,19 +527,6 @@ void DaybookActivity::route(const Act act, const int32_t value) {
     case Act::TogglePosition:
       agendaBottom_ = !agendaBottom_;
       saveSettings();
-      break;
-    case Act::PickWallpaper:
-      wallChoices_ = daybook::wallpaperChoices();
-      page_ = 0;
-      view_ = View::Wallpapers;
-      break;
-    case Act::SetWallpaper:  // value 0 is the default, k is wallChoices_[k - 1]
-      wallpaper_ = value <= 0 || static_cast<size_t>(value) > wallChoices_.size()
-                       ? std::string()
-                       : wallChoices_[static_cast<size_t>(value - 1)];
-      saveSettings();
-      wallChoices_.clear();
-      view_ = View::Settings;
       break;
     case Act::OpenTodo:  // the to-do acts are all handled by routeTodo(), above
     case Act::OpenLists:
@@ -759,12 +744,31 @@ void DaybookActivity::textBox(const int fontId, const int x, const int y, const 
   renderer.drawText(fontId, tx, y + (h - lh) / 2, shown.c_str(), black);
 }
 
+void DaybookActivity::rbox(const int x, const int y, const int w, const int h, const int thickness,
+                           const int radius) const {
+  const int r = std::min(radius, std::min(w, h) / 2);
+  renderer.drawRoundedRect(x, y, w, h, thickness, r, true);
+}
+
+// A solid (or white) rectangle with rounded corners: the middle in one block, the ends row by row.
+void DaybookActivity::rfill(const int x, const int y, const int w, const int h, const bool black,
+                            const int radius) const {
+  const int r = std::min(radius, std::min(w, h) / 2);
+  renderer.fillRect(x, y + r, w, h - 2 * r, black);
+  for (int i = 0; i < r; ++i) {
+    const double dy = r - i - 0.5;
+    const int inset = r - static_cast<int>(std::sqrt(static_cast<double>(r) * r - dy * dy));
+    renderer.fillRect(x + inset, y + i, w - 2 * inset, 1, black);
+    renderer.fillRect(x + inset, y + h - 1 - i, w - 2 * inset, 1, black);
+  }
+}
+
 void DaybookActivity::button(const int x, const int y, const int w, const int h, const char* label, const Act act,
                               const int32_t value, const bool filled, const int fontId) {
   if (filled) {
-    renderer.fillRect(x, y, w, h, true);
+    rfill(x, y, w, h, true, 8);
   } else {
-    renderer.drawRoundedRect(x, y, w, h, 2, 8, true);
+    rbox(x, y, w, h, 2, 8);
   }
   textBox(fontId < 0 ? kBold : fontId, x, y, w, h, label, true, !filled);
   addHit(x, y, w, h, act, value);
@@ -894,11 +898,11 @@ void DaybookActivity::drawMonth() {
       const int cx = gridX + i * cw;
       const bool inMonth = d.m == month_;
       const bool isToday = clockKnown_ && day == today_;
-      renderer.drawRect(cx, ry, cw, ch, true);
-      if (day == selected_) renderer.drawRect(cx + 2, ry + 2, cw - 4, ch - 4, true);
+      rbox(cx, ry, cw, ch, 1, 4);
+      if (day == selected_) rbox(cx + 2, ry + 2, cw - 4, ch - 4, 1, 3);
       const std::string num = std::to_string(d.d);
       if (isToday) {
-        renderer.fillRect(cx + 4, ry + 4, cw - 8, renderer.getLineHeight(kBoldSmall) + 4, true);
+        rfill(cx + 4, ry + 4, cw - 8, renderer.getLineHeight(kBoldSmall) + 4, true, 3);
         textBox(kBoldSmall, cx + 4, ry + 4, cw - 8, renderer.getLineHeight(kBoldSmall) + 4, num, true, false);
       } else {
         textBox(inMonth ? kBoldSmall : kSmall, cx + 4, ry + 4, cw - 8, renderer.getLineHeight(kSmall) + 4, num, true);
@@ -906,8 +910,8 @@ void DaybookActivity::drawMonth() {
       if ((busy >> bit) & 1) renderer.fillRect(cx + 8, ry + ch - 10, cw - 16, 5, true);
       if ((taskAny >> bit) & 1) {  // a to-do is due: solid square while one is open, hollow when all are done
         const int ms = 10;
-        if ((taskOpen >> bit) & 1) renderer.fillRect(cx + cw / 2 - ms / 2, ry + ch - 26, ms, ms, true);
-        else renderer.drawRect(cx + cw / 2 - ms / 2, ry + ch - 26, ms, ms, true);
+        if ((taskOpen >> bit) & 1) rfill(cx + cw / 2 - ms / 2, ry + ch - 26, ms, ms, true, 2);
+        else rbox(cx + cw / 2 - ms / 2, ry + ch - 26, ms, ms, 1, 2);
       }
       addHit(cx, ry, cw, ch, Act::PickDay, day);
     }
@@ -960,7 +964,7 @@ void DaybookActivity::drawWeek() {
     const bool isToday = clockKnown_ && day == today_;
     addHit(kM, y, sw - 2 * kM, hdrH, Act::PickDay, day);
     if (isToday) {
-      renderer.fillRect(kM, y, sw - 2 * kM, hdrH, true);
+      rfill(kM, y, sw - 2 * kM, hdrH, true, 4);
     } else {
       renderer.drawLine(kM, y + hdrH - 2, sw - kM, y + hdrH - 2);
     }
@@ -1181,7 +1185,7 @@ void DaybookActivity::drawList() {
       } else {
         const cal::Occurrence& o = occ[e.idx];
         const cal::Event& ev = events_[o.event];
-        renderer.drawRect(kM, y, sw - 2 * kM, evH - 4, true);
+        rbox(kM, y, sw - 2 * kM, evH - 4);
         textBox(kSmall, kM + 4, y, lw, evH - 4, shortWhen(ev, o, twelveHour()), false);
         textBox(kBold, kM + 4 + lw, y, sw - 2 * kM - 4 - lw, evH - 4, ev.title, false);
         addHit(kM, y, sw - 2 * kM, evH - 4, Act::OpenEvent, static_cast<int32_t>(o.event));
@@ -1233,7 +1237,7 @@ void DaybookActivity::drawDay() {
       continue;
     }
     const cal::Event& ev = events_[occ[idx].event];
-    renderer.drawRect(kM, ry, sw - 2 * kM, rowH - 6, true);
+    rbox(kM, ry, sw - 2 * kM, rowH - 6);
     std::string line1 = whenLabel(ev, occ[idx], selected_);
     if (!ev.location.empty()) line1 += "   @ " + ev.location;
     textBox(kSmall, kM, ry + 4, sw - 2 * kM, renderer.getLineHeight(kSmall) + 4, line1, false);
@@ -1313,7 +1317,7 @@ void DaybookActivity::drawDetail() {
 
 void DaybookActivity::rowBox(const int rx, const int ry, const int rw, const int h, const Act act, const int base,
                               const std::string& value) {
-  renderer.drawRoundedRect(rx, ry, rw, h, 2, 8, true);
+  rbox(rx, ry, rw, h, 2, 8);
   textBox(kBody, rx, ry, rw, h, value, false);
   addHit(rx, ry, rw, h, act, base);
 }
@@ -1467,80 +1471,66 @@ void DaybookActivity::drawForm() {
 
 void DaybookActivity::drawSettings() {
   const int sw = renderer.getScreenWidth();
+  const int sh = renderer.getScreenHeight();
   int y = drawHeader("Settings", "");
   // Two lines a row, the setting's name small over its value, so neither is cut short by the other.
   const int lhS = renderer.getLineHeight(kSmall);
   const int lhB = renderer.getLineHeight(kBold);
   const int rowH = lhS + lhB + 18;
-  const auto row = [&](const char* label, const std::string& value, const Act act) {
-    renderer.drawRoundedRect(kM, y, sw - 2 * kM, rowH, 2, 8, true);
-    textBox(kSmall, kM + 6, y + 4, sw - 2 * kM - 12, lhS + 2, label, false);
-    textBox(kBold, kM + 6, y + 6 + lhS, sw - 2 * kM - 12, lhB + 6, value, false);
-    addHit(kM, y, sw - 2 * kM, rowH, act);
-    y += rowH + 8;
+  struct Row {
+    const char* label;
+    std::string value;
+    Act act;
   };
-  row("First day of week", firstDay_ == 1 ? "Monday" : (firstDay_ == 0 ? "Sunday" : "Saturday"), Act::SetFirstDay);
-  row("Week numbers", weekNums_ ? "On" : "Off", Act::ToggleWeek);
-  row("Agenda on the sleep screen", agenda_ ? "On" : "Off", Act::ToggleAgenda);
-  row("Agenda size", agendaSize_ == 0 ? "Small (counts only)" : (agendaSize_ == 1 ? "Normal" : "Large"), Act::CycleSize);
-  row("Agenda shows", tomorrow_ ? "Today + tomorrow" : "Today only", Act::ToggleTomorrow);
-  row("Agenda position", agendaBottom_ ? "Bottom" : "Top", Act::TogglePosition);
-  {
-    // The name after the last '/', so "/sleepscreen/forest.bmp" reads "forest.bmp".
-    const size_t slash = wallpaper_.rfind('/');
-    row("Sleep wallpaper", wallpaper_.empty() ? std::string("Default (/sleep.bmp)") : wallpaper_.substr(slash + 1),
-        Act::PickWallpaper);
-  }
-  y += 6;
-  const std::string note =
-      message_.empty() ? "The agenda shows when Sleep screen is set to Custom. Clock format follows System settings."
-                       : message_;
-  for (const std::string& line : renderer.wrappedText(kSmall, note.c_str(), sw - 2 * kM, 4)) {
-    renderer.drawText(kSmall, kM, y, line.c_str(), true);
-    y += renderer.getLineHeight(kSmall) + 2;
-  }
-  if (!clockKnown_) {
-    y += 8;
-    textBox(kBoldSmall, 0, y, sw, renderer.getLineHeight(kBoldSmall) + 8, "Clock not set: no 'today' shown", true);
-  }
-}
-
-// The picker behind "Sleep wallpaper": Default, then every .bmp the card holds, a page at a time.
-void DaybookActivity::drawWallpapers() {
-  const int sw = renderer.getScreenWidth();
-  const int sh = renderer.getScreenHeight();
-  int y = drawHeader("Sleep wallpaper", "");
-  const int bh = renderer.getLineHeight(kBold) + 26;
-  const int rowH = renderer.getLineHeight(kBold) + 22;
-  const int bottom = sh - bh - kM - 8;
-  const int total = static_cast<int>(wallChoices_.size()) + 1;  // + the default
-  const int perPage = std::max(1, (bottom - y) / (rowH + 6));
-  pages_ = std::max(1, (total + perPage - 1) / perPage);
+  const Row rows[] = {
+      {"First day of week", firstDay_ == 1 ? "Monday" : (firstDay_ == 0 ? "Sunday" : "Saturday"), Act::SetFirstDay},
+      {"Week numbers", weekNums_ ? "On" : "Off", Act::ToggleWeek},
+      {"Agenda on the sleep screen", agenda_ ? "On" : "Off", Act::ToggleAgenda},
+      {"Agenda size", agendaSize_ == 0 ? "Small (counts only)" : (agendaSize_ == 1 ? "Normal" : "Large"),
+       Act::CycleSize},
+      {"Agenda shows", tomorrow_ ? "Today + tomorrow" : "Today only", Act::ToggleTomorrow},
+      {"Agenda position", agendaBottom_ ? "Bottom" : "Top", Act::TogglePosition},
+  };
+  const int nRows = static_cast<int>(sizeof rows / sizeof rows[0]);
+  // The note under the rows takes two row slots. Whatever does not fit goes on the next page
+  // (Prev/Next, or swipe up/down), so the end of the screen is never cut off.
+  const int slots = nRows + 2;
+  const int pagerH = lhS + 18;
+  int perPage = std::max(1, (sh - kM - y) / (rowH + 8));
+  if (slots > perPage) perPage = std::max(1, (sh - kM - pagerH - 6 - y) / (rowH + 8));
+  pages_ = std::max(1, (slots + perPage - 1) / perPage);
   page_ = std::clamp(page_, 0, pages_ - 1);
-  for (int i = 0; i < perPage; ++i) {
-    const int idx = page_ * perPage + i;
-    if (idx >= total) break;
-    const int ry = y + i * (rowH + 6);
-    const std::string path = idx == 0 ? std::string() : wallChoices_[static_cast<size_t>(idx - 1)];
-    const bool chosen = path == wallpaper_;
-    renderer.drawRoundedRect(kM, ry, sw - 2 * kM, rowH, 2, 8, true);
-    if (chosen) renderer.drawRoundedRect(kM + 3, ry + 3, sw - 2 * kM - 6, rowH - 6, 1, 6, true);
-    // "/sleepscreen/forest.bmp" shown as it is on the card, without the leading slash.
-    const std::string shown = idx == 0 ? std::string("Default (/sleep.bmp)") : path.substr(path[0] == '/' ? 1 : 0);
-    textBox(kBold, kM + 8, ry, sw - 2 * kM - 16, rowH, shown, false);
-    addHit(kM, ry, sw - 2 * kM, rowH, Act::SetWallpaper, idx);
+  const int first = page_ * perPage;
+  for (int i = 0; i < nRows; ++i) {
+    if (i < first || i >= first + perPage) continue;
+    const Row& r = rows[i];
+    rbox(kM, y, sw - 2 * kM, rowH);
+    textBox(kSmall, kM + 6, y + 4, sw - 2 * kM - 12, lhS + 2, r.label, false);
+    textBox(kBold, kM + 6, y + 6 + lhS, sw - 2 * kM - 12, lhB + 6, r.value, false);
+    addHit(kM, y, sw - 2 * kM, rowH, r.act);
+    y += rowH + 8;
   }
-  if (wallChoices_.empty()) {
-    textBox(kSmall, 0, bottom - renderer.getLineHeight(kSmall) - 4, sw, renderer.getLineHeight(kSmall) + 4,
-            "No .bmp files found on the card", true);
+  if (nRows >= first && nRows < first + perPage) {  // the note starts on this page
+    y += 6;
+    const std::string note =
+        message_.empty() ? "The agenda shows when Sleep screen is set to Custom. Clock format follows System settings."
+                         : message_;
+    for (const std::string& line : renderer.wrappedText(kSmall, note.c_str(), sw - 2 * kM, 4)) {
+      renderer.drawText(kSmall, kM, y, line.c_str(), true);
+      y += renderer.getLineHeight(kSmall) + 2;
+    }
+    if (!clockKnown_) {
+      y += 8;
+      textBox(kBoldSmall, 0, y, sw, renderer.getLineHeight(kBoldSmall) + 8, "Clock not set: no 'today' shown", true);
+    }
   }
   if (pages_ > 1) {
+    const int py = sh - kM - pagerH;
     const int pw = 120;
-    const int py = sh - bh - kM;
-    button(kM, py, pw, bh, "Prev", Act::PagePrev, 0);
-    button(sw - kM - pw, py, pw, bh, "Next", Act::PageNext, 0);
-    textBox(kBoldSmall, kM + pw, py, sw - 2 * kM - 2 * pw, bh, std::to_string(page_ + 1) + "/" + std::to_string(pages_),
-            true);
+    button(kM, py, pw, pagerH, "Prev", Act::PagePrev, 0, false, kBoldSmall);
+    button(sw - kM - pw, py, pw, pagerH, "Next", Act::PageNext, 0, false, kBoldSmall);
+    textBox(kBoldSmall, kM + pw, py, sw - 2 * kM - 2 * pw, pagerH,
+            std::to_string(page_ + 1) + "/" + std::to_string(pages_), true);
   }
 }
 
@@ -1618,7 +1608,7 @@ void DaybookActivity::drawSearch() {
     const int ry = y + i * evH;
     if (f.isEvent) {
       const cal::Event& ev = events_[f.idx];
-      renderer.drawRect(kM, ry, sw - 2 * kM, evH - 4, true);
+      rbox(kM, ry, sw - 2 * kM, evH - 4);
       textBox(kSmall, kM + 4, ry, lw, evH - 4, shortDate(f.shown), false);
       textBox(kBold, kM + 4 + lw, ry, sw - 2 * kM - 4 - lw, evH - 4, ev.title, false);
       addHit(kM, ry, sw - 2 * kM, evH - 4, Act::OpenEvent, static_cast<int32_t>(f.idx));
@@ -1661,8 +1651,8 @@ void DaybookActivity::drawUndo() {
   int y = top - 6 - barH;
   if ((view_ == View::List || view_ == View::Todo || view_ == View::Search) && pages_ > 1) y -= lhBS + 18 + 6;
   const int bw = 90;
-  renderer.fillRect(kM, y, sw - 2 * kM, barH, false);
-  renderer.drawRect(kM, y, sw - 2 * kM, barH, 2, true);
+  rfill(kM, y, sw - 2 * kM, barH, false);
+  rbox(kM, y, sw - 2 * kM, barH, 2);
   addHit(kM, y, sw - 2 * kM, barH, Act::Nop);  // a tap on the bar must not reach what is under it
   textBox(kBoldSmall, kM + 4, y, sw - 2 * kM - bw - 12, barH, "Deleted: " + trash_.label, false);
   button(sw - kM - bw - 4, y + 3, bw, barH - 6, "Undo", Act::Undo, 0, true, kBoldSmall);
@@ -1715,9 +1705,6 @@ void DaybookActivity::render(RenderLock&&) {
       break;
     case View::ListForm:
       drawListForm();
-      break;
-    case View::Wallpapers:
-      drawWallpapers();
       break;
   }
   drawUndo();

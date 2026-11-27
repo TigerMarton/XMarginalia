@@ -281,7 +281,7 @@ bool DaybookActivity::routeTodo(const Act act, const int32_t value) {
 
 // A box with a tick in it when `checked`.
 void DaybookActivity::drawCheck(const int x, const int y, const int size, const bool checked, const bool black) const {
-  renderer.drawRect(x, y, size, size, 2, black);
+  renderer.drawRoundedRect(x, y, size, size, 2, std::min(4, size / 4), black);
   if (!checked) return;
   const int x1 = x + size * 22 / 100;
   const int y1 = y + size * 52 / 100;
@@ -300,9 +300,9 @@ void DaybookActivity::taskRow(const int y, const int h, const size_t index, cons
   const int w = sw - 2 * kM;
   const bool ink = !inverted;  // the colour of text and lines on this row
   if (inverted) {
-    renderer.fillRect(kM, y, w, h, true);
+    rfill(kM, y, w, h, true);
   } else {
-    renderer.drawRect(kM, y, w, h, true);
+    rbox(kM, y, w, h);
   }
   const int bs = std::min(32, h - 10);
   drawCheck(kM + 10, y + (h - bs) / 2, bs, t.done, ink);
@@ -399,8 +399,8 @@ void DaybookActivity::drawLists() {
   for (size_t i = 0; i < lists_.size(); ++i) {
     const int ry = y + static_cast<int>(i) * (rowH + 8);
     if (ry + rowH > barY) break;
-    renderer.drawRoundedRect(kM, ry, sw - 2 * kM, rowH, 2, 8, true);
-    if (i == curList_) renderer.drawRoundedRect(kM + 3, ry + 3, sw - 2 * kM - 6, rowH - 6, 1, 6, true);
+    rbox(kM, ry, sw - 2 * kM, rowH, 2, 8);
+    if (i == curList_) rbox(kM + 3, ry + 3, sw - 2 * kM - 6, rowH - 6, 1, 6);
     addHit(kM, ry, sw - 2 * kM, rowH, Act::SelectList, static_cast<int32_t>(i));
     const std::string count = std::to_string(openCount(lists_[i].id)) + " open";
     const int cw = renderer.getTextWidth(kSmall, count.c_str()) + 16;

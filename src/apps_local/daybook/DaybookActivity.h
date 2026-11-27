@@ -51,7 +51,6 @@ class DaybookActivity final : public Activity {
     Lists,
     TaskForm,
     ListForm,
-    Wallpapers,
     Search,
   };
   enum class Act : uint8_t {
@@ -75,8 +74,6 @@ class DaybookActivity final : public Activity {
     PageNext,
     SetFirstDay,
     ToggleWeek,
-    PickWallpaper,
-    SetWallpaper,
     ToggleAgenda,
     CycleSize,
     ToggleTomorrow,
@@ -138,8 +135,6 @@ class DaybookActivity final : public Activity {
   int agendaSize_ = 2;     // ...how much it says: 0 Small (counts), 1 Normal, 2 Large
   bool tomorrow_ = true;   // ...with tomorrow under it
   bool agendaBottom_ = false;  // ...at the bottom of the screen
-  std::vector<std::string> wallChoices_;  // the .bmp files on the card, while the picker is open
-  std::string wallpaper_;  // sleep wallpaper path; "" = the default
   bool listMode_ = false;  // the home screen: the upcoming list...
   bool weekMode_ = false;  // ...or else a week (true) or a month (false) grid
   std::string search_;     // the Find screen's words
@@ -182,7 +177,6 @@ class DaybookActivity final : public Activity {
   bool saveTasks();
   bool saveLists();
   void saveSettings();
-  void drawWallpapers();
   void restoreTrash();
   void askSearch();
   void discard(Trash::Kind kind, int at, const std::string& label);  // starts a fresh Trash
@@ -229,6 +223,10 @@ class DaybookActivity final : public Activity {
   void drawDay();
   void drawDetail();
   void drawForm();
+  // Boxes all have small rounded corners; "filled" ones keep them too.
+  static constexpr int kRound = 6;
+  void rbox(int x, int y, int w, int h, int thickness = 1, int radius = kRound) const;
+  void rfill(int x, int y, int w, int h, bool black, int radius = kRound) const;
   void drawSettings();
   // Form rows, drawn in the value column that starts at rx. `base` is (field << 3); zones 1..4 are the arrows.
   void rowBox(int rx, int ry, int rw, int h, Act act, int base, const std::string& value);
